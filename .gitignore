@@ -89,3 +89,6 @@ target/
 .mypy_cache/
 
 .venv/
+
+# Dataset managed by DVC
+data/raw/chest_xray/
