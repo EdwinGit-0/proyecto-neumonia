@@ -3,50 +3,90 @@ proyecto-neumonia
 
 Clasificacion de imagenes de rayos X de torax para la identificacion de neumonia mediante redes neuronales convolucionales
 
-Project Organization
-------------
+# Proyecto de clasificación de neumonía
 
-    ├── LICENSE
-    ├── Makefile           <- Makefile with commands like `make data` or `make train`
-    ├── README.md          <- The top-level README for developers using this project.
-    ├── data
-    │   ├── external       <- Data from third party sources.
-    │   ├── interim        <- Intermediate data that has been transformed.
-    │   ├── processed      <- The final, canonical data sets for modeling.
-    │   └── raw            <- The original, immutable data dump.
-    │
-    ├── docs               <- A default Sphinx project; see sphinx-doc.org for details
-    │
-    ├── models             <- Trained and serialized models, model predictions, or model summaries
-    │
-    ├── notebooks          <- Jupyter notebooks. Naming convention is a number (for ordering),
-    │                         the creator's initials, and a short `-` delimited description, e.g.
-    │                         `1.0-jqp-initial-data-exploration`.
-    │
-    ├── references         <- Data dictionaries, manuals, and all other explanatory materials.
-    │
-    ├── reports            <- Generated analysis as HTML, PDF, LaTeX, etc.
-    │   └── figures        <- Generated graphics and figures to be used in reporting
-    │
-    ├── requirements.txt   <- The requirements file for reproducing the analysis environment, e.g.
-    │                         generated with `pip freeze > requirements.txt`
-    │
-    ├── setup.py           <- makes project pip installable (pip install -e .) so src can be imported
-    ├── src                <- Source code for use in this project.
-    │   ├── __init__.py    <- Makes src a Python module
-    │   │
-    │   ├── data           <- Scripts to download or generate data
-    │   │   └── make_dataset.py
-    │   │
-    │   ├── features       <- Scripts to turn raw data into features for modeling
-    │   │   └── build_features.py
-    │   │
-    │   ├── models         <- Scripts to train models and then use trained models to make
-    │   │   │                 predictions
-    │   │   ├── predict_model.py
-    │   │   └── train_model.py
-    │   │
+Clasificación de imágenes de rayos X de tórax en las clases `NORMAL` y
+`PNEUMONIA` mediante redes convolucionales con transferencia de aprendizaje.
+
+## Estado actual
+
+El EDA, la preparación de imágenes, el entrenamiento, la evaluación y la
+comparación de tres modelos fueron ejecutados sobre el dataset real. El modelo
+seleccionado actualmente es **MobileNetV2**, usando Balanced Accuracy como
+criterio principal, seguido de ROC-AUC, F1 y Accuracy.
+
+Resultados guardados: `models/model_results.json`.
+
+## Dataset
+
+El dataset está gestionado mediante DVC y se recupera en
+`data/raw/chest_xray/`. Contiene 5.856 imágenes JPEG con esta estructura:
+
+```text
+data/raw/chest_xray/
+├── train/NORMAL/
+├── train/PNEUMONIA/
+├── val/NORMAL/
+├── val/PNEUMONIA/
+├── test/NORMAL/
+└── test/PNEUMONIA/
+```
+
+La configuración DVC usa un remoto Google Drive. El detalle técnico completo
+está en [references/documentacion_proyecto.md](references/documentacion_proyecto.md).
+
+## Instalación
+
+En PowerShell:
+
+```powershell
+py -3.10 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+```
+
+Para recuperar los datos:
+
+```powershell
     │   └── visualization  <- Scripts to create exploratory and results oriented visualizations
+```
+
+## Ejecución
+
+EDA:
+
+```powershell
+.\.venv\Scripts\python.exe -m src.data.make_dataset
+```
+
+Entrenamiento y evaluación real de los tres modelos:
+
+```powershell
+.\.venv\Scripts\python.exe -m src.training.run_real_training
+```
+
+Este comando vuelve a entrenar los modelos. Para consultar los resultados ya
+existentes, leer `models/model_results.json` sin ejecutarlo.
+
+Tests:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest
+```
+
+## Organización
+
+- `src/data/`: EDA, preprocesamiento y datasets TensorFlow.
+- `src/models/`: arquitecturas, métricas y comparación.
+- `src/training/`: utilidades y entry point del entrenamiento real.
+- `notebooks/`: notebook de comprensión de datos y EDA.
+- `models/`: checkpoints y resultados.
+- `reports/figures/`: figuras EDA y evaluación.
+- `references/`: documentación técnica y guía de ejecución.
+- `tests/`: 22 pruebas automatizadas.
+
+El despliegue productivo y la validación clínica están fuera del alcance de
+este proyecto académico.
     │       └── visualize.py
     │
     └── tox.ini            <- tox file with settings for running tox; see tox.readthedocs.io

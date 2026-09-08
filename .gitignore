@@ -92,3 +92,5 @@ target/
 
 # Dataset managed by DVC
 data/raw/chest_xray/
+# Trained model artifacts
+models/*/best_model.keras
