@@ -14,6 +14,7 @@ from src.data.preprocessing import (
 )
 from src.models.architectures import MODEL_NAMES, build_transfer_model
 from src.models.evaluation import compute_confusion_matrix, compute_metrics_report, select_best_model
+from src.data.splitting import create_stratified_split_manifest
 
 
 @pytest.fixture
@@ -153,3 +154,20 @@ def test_compute_metrics_report_handles_empty_predictions() -> None:
 def test_select_best_model_rejects_empty_results() -> None:
     with pytest.raises(ValueError):
         select_best_model([])
+
+
+def test_create_stratified_split_manifest_is_reproducible_and_disjoint(tmp_path: Path) -> None:
+    data_dir = tmp_path / "chest_xray"
+    for label in ["NORMAL", "PNEUMONIA"]:
+        folder = data_dir / "train" / label
+        folder.mkdir(parents=True, exist_ok=True)
+        for index in range(10):
+            image = Image.new("RGB", (16, 16), color=(index, 20 if label == "NORMAL" else 40, 30))
+            image.save(folder / f"{label}_{index}.png")
+
+    first = create_stratified_split_manifest(data_dir, tmp_path / "first.csv", random_state=42)
+    second = create_stratified_split_manifest(data_dir, tmp_path / "second.csv", random_state=42)
+
+    assert first[["path", "split"]].equals(second[["path", "split"]])
+    assert first.groupby("split")["label"].count().sum() == 20
+    assert set(first["split"]) == {"train", "val", "test"}

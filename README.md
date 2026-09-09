@@ -12,8 +12,10 @@ Clasificación de imágenes de rayos X de tórax en las clases `NORMAL` y
 
 El EDA, la preparación de imágenes, el entrenamiento, la evaluación y la
 comparación de tres modelos fueron ejecutados sobre el dataset real. El modelo
-seleccionado actualmente es **MobileNetV2**, usando Balanced Accuracy como
-criterio principal, seguido de ROC-AUC, F1 y Accuracy.
+seleccionado actualmente es **MobileNetV2**, elegido únicamente con las métricas
+de `validation` del reparto experimental 70/15/15 (train 4.099, validation 879
+y test 878, sin duplicados entre conjuntos). El conjunto `test` quedó reservado
+y solo se utilizó para la evaluación final de MobileNetV2.
 
 Resultados guardados: `models/model_results.json`.
 
@@ -32,6 +34,11 @@ data/raw/chest_xray/
 └── test/PNEUMONIA/
 ```
 
+La estructura anterior es la del dataset crudo. Para el modelado se utiliza la
+partición experimental estratificada 70/15/15 (semilla 42) registrada en
+`data/interim/stratified_split_70_15_15.csv`, sin duplicados entre los tres
+conjuntos.
+
 La configuración DVC usa un remoto Google Drive. El detalle técnico completo
 está en [references/documentacion_proyecto.md](references/documentacion_proyecto.md).
 
@@ -48,7 +55,7 @@ py -3.10 -m venv .venv
 Para recuperar los datos:
 
 ```powershell
-    │   └── visualization  <- Scripts to create exploratory and results oriented visualizations
+dvc pull data/raw/chest_xray.dvc
 ```
 
 ## Ejecución
@@ -83,14 +90,10 @@ Tests:
 - `models/`: checkpoints y resultados.
 - `reports/figures/`: figuras EDA y evaluación.
 - `references/`: documentación técnica y guía de ejecución.
-- `tests/`: 22 pruebas automatizadas.
+- `tests/`: 23 pruebas automatizadas.
 
 El despliegue productivo y la validación clínica están fuera del alcance de
 este proyecto académico.
-    │       └── visualize.py
-    │
-    └── tox.ini            <- tox file with settings for running tox; see tox.readthedocs.io
-
 
 --------
 

@@ -1,5 +1,3 @@
-Antes de realizar cualquier modificación, consulta references/guia_monografia.pdf, references/doc_proyecto.md. Utiliza estos documentos únicamente como referencia y no los modifiques salvo que se solicite explícitamente.
-
 Quiero que trabajes sobre el proyecto actual **proyecto-neumonia** y continúes su desarrollo de forma profesional, siguiendo las buenas prácticas de un proyecto de Ciencia de Datos / Machine Learning / Deep Learning.
 
 ## 1. REGLA PRINCIPAL
@@ -236,13 +234,15 @@ chest_xray/
     └── PNEUMONIA/
 ```
 
-El dataset contiene 5,856 imágenes:
+La estructura anterior es la del dataset crudo (`data/raw/chest_xray/`, 5,856 imágenes en total).
 
-| División   | NORMAL | PNEUMONIA | Total |
+El reparto experimental actual para el modelado es 70/15/15 (semilla 42), generado en la preparación de datos y registrado en `data/interim/stratified_split_70_15_15.csv`, sin duplicados entre los tres conjuntos:
+
+| Conjunto   | NORMAL | PNEUMONIA | Total |
 | ---------- | -----: | --------: | ----: |
-| Train      |  1,341 |     3,875 | 5,216 |
-| Validation |      8 |         8 |    16 |
-| Test       |    234 |       390 |   624 |
+| Train      |  1,108 |     2,991 | 4,099 |
+| Validation |    238 |       641 |   879 |
+| Test       |    237 |       641 |   878 |
 | Total      |  1,583 |     4,273 | 5,856 |
 
 Verifica estos datos mediante código en lugar de asumirlos ciegamente.

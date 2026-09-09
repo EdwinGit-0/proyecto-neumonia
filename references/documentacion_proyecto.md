@@ -13,13 +13,13 @@
 - inspeccionar y documentar la estructura y calidad del dataset;
 - preparar imágenes para entrada de modelos convolucionales;
 - entrenar VGG16, ResNet50 y MobileNetV2 con una configuración comparable;
-- evaluar los modelos sobre el conjunto `test`;
+- evaluar y comparar los modelos sobre el conjunto de validación y realizar la evaluación final del modelo seleccionado sobre el conjunto de prueba;
 - comparar sus resultados con métricas apropiadas para clasificación médica binaria;
 - seleccionar el modelo con mejor desempeño global según una regla reproducible.
 
 **Alcance:** análisis exploratorio, preparación de imágenes, entrenamiento experimental, evaluación y comparación de tres arquitecturas. El resultado es académico y experimental.
 
-**Limitaciones:** no es un sistema clínico ni una herramienta de diagnóstico; no existe validación clínica externa; el conjunto `val` es muy pequeño; el dataset está desbalanceado; no se realiza calibración clínica ni despliegue productivo.
+**Limitaciones:** no es un sistema clínico ni una herramienta de diagnóstico; no existe validación clínica externa; el `val` original del dataset crudo es muy pequeño (16 imágenes) y no se utiliza como validación experimental; el dataset está desbalanceado; no se realiza calibración clínica ni despliegue productivo.
 
 ## 2. Dataset
 
@@ -42,6 +42,8 @@ chest_xray/
 
 La clase `NORMAL` se codifica como objetivo `0` y `PNEUMONIA` como objetivo `1`.
 
+Esta es la estructura original del dataset crudo (`data/raw/chest_xray/`):
+
 | División | NORMAL | PNEUMONIA | Total |
 |---|---:|---:|---:|
 | train | 1.341 | 3.875 | 5.216 |
@@ -49,9 +51,18 @@ La clase `NORMAL` se codifica como objetivo `0` y `PNEUMONIA` como objetivo `1`.
 | test | 234 | 390 | 624 |
 | **Total** | **1.583** | **4.273** | **5.856** |
 
+La partición experimental utilizada para modelado no es esa estructura cruda: se genera en la preparación de datos con `create_stratified_split_manifest` (`src/data/splitting.py`), estratificada por clase, con semilla 42 y proporción 70/15/15. El manifiesto es `data/interim/stratified_split_70_15_15.csv`:
+
+| Conjunto | NORMAL | PNEUMONIA | Total |
+|---|---:|---:|---:|
+| train | 1.108 | 2.991 | 4.099 |
+| validation | 238 | 641 | 879 |
+| test | 237 | 641 | 878 |
+| **Total** | **1.583** | **4.273** | **5.856** |
+
 Todas las imágenes actuales son `.jpeg`. El análisis de archivos observó tamaños entre 5.441 y 2.414.342 bytes. La función EDA verificó las imágenes y no detectó archivos corruptos.
 
-Se detectaron 30 grupos de archivos con contenido idéntico, correspondientes a 30 rutas duplicadas adicionales dentro de sus respectivos grupos. La auditoría por SHA-256 no detectó duplicados exactos entre `train`, `val` y `test`; los duplicados encontrados están dentro del mismo split. Esta condición debe considerarse al interpretar la independencia efectiva de algunos ejemplos.
+En la estructura cruda se detectaron 30 grupos de archivos con contenido idéntico, que agrupan 62 rutas; tomando una ruta representante por grupo, implica 32 rutas duplicadas adicionales. La auditoría por SHA-256 no detectó duplicados exactos entre `train`, `val` y `test` crudos; los duplicados encontrados están dentro del mismo split. El reparto experimental 70/15/15 se construye agrupando por hash SHA-256, por lo que garantiza que no existan duplicados entre los tres conjuntos.
 
 El manifiesto [data/raw/chest_xray.dvc](../data/raw/chest_xray.dvc) registra 5.856 archivos y un tamaño de 1.236.482.806 bytes.
 
@@ -75,6 +86,7 @@ proyecto-neumonia/
 ├── data/
 │   ├── external/
 │   ├── interim/
+│   │   └── stratified_split_70_15_15.csv
 │   ├── processed/
 │   └── raw/
 │       ├── chest_xray.dvc
@@ -88,8 +100,6 @@ proyecto-neumonia/
 ├── notebooks/
 │   └── 01_comprension_datos_eda.ipynb
 ├── references/
-│   ├── doc_proyecto.md
-│   ├── guia_monografia.pdf
 │   ├── instrucciones_copilot.md
 │   ├── documentacion_proyecto.md
 │   └── guia_ejecucion.md
@@ -98,6 +108,7 @@ proyecto-neumonia/
 │   ├── data/
 │   │   ├── make_dataset.py
 │   │   ├── preprocessing.py
+│   │   ├── splitting.py
 │   │   └── datasets.py
 │   ├── features/build_features.py
 │   ├── models/
@@ -126,9 +137,9 @@ proyecto-neumonia/
 
 1. **Comprensión del negocio:** se definió el problema académico de distinguir radiografías normales de radiografías con neumonía, dando importancia a la detección de positivos.
 2. **Comprensión de los datos:** realizada mediante EDA sobre el dataset real, incluyendo estructura, distribución, dimensiones, tamaños, muestras, corrupción y duplicados.
-3. **Preparación de los datos:** realizada mediante carga, conversión RGB, redimensionamiento, normalización y creación de datasets TensorFlow.
+3. **Preparación de los datos:** realizada con el reparto estratificado 70/15/15 (`data/interim/stratified_split_70_15_15.csv`, train 4.099, validation 879 y test 878, sin duplicados entre conjuntos), y mediante carga, conversión RGB, redimensionamiento, normalización y creación de datasets TensorFlow.
 4. **Modelado:** realizado con VGG16, ResNet50 y MobileNetV2 con transferencia de aprendizaje.
-5. **Evaluación:** realizada sobre `test` con matriz de confusión, métricas binarias y curvas ROC.
+5. **Evaluación:** selección del modelo únicamente con las métricas de `validation` y evaluación final del ganador sobre `test`, con matriz de confusión, métricas binarias y curvas ROC.
 6. **Despliegue:** fuera del alcance actual. No se implementó una API ni una aplicación de producción.
 
 ## 6. EDA
@@ -155,9 +166,11 @@ Las figuras generadas en `reports/figures/` son:
 - `sample_normal.png`;
 - `sample_pneumonia.png`.
 
-La conclusión real es que el dataset está fuertemente desbalanceado hacia `PNEUMONIA`, especialmente en `train`, que `val` contiene solo 16 imágenes y que no se detectaron imágenes corruptas. También existen duplicados dentro de splits, sin duplicados exactos entre splits.
+La conclusión real es que el dataset está fuertemente desbalanceado hacia `PNEUMONIA`, especialmente en el `train` original, que el `val` original de la estructura cruda contiene solo 16 imágenes y que no se detectaron imágenes corruptas. También existen duplicados dentro de los splits crudos, sin duplicados exactos entre ellos. El `val` de 16 imágenes es descriptivo del dataset crudo y no se utiliza como validación experimental: para el modelado se genera el reparto 70/15/15 en la preparación de datos, con validation de 879 imágenes y test de 878.
 
 ## 7. Preparación de imágenes
+
+La partición experimental la genera `src/data/splitting.py` con `create_stratified_split_manifest`: estratificada por clase, con semilla 42, proporción 70/15/15 y agrupación por hash SHA-256 para evitar duplicados entre conjuntos. El manifiesto resultante es `data/interim/stratified_split_70_15_15.csv` (train 4.099, validation 879 y test 878).
 
 `src/data/preprocessing.py` implementa:
 
@@ -201,17 +214,17 @@ La utilidad separada `src/training/training.py` contiene defaults reutilizables 
 
 ## 9. Entrenamiento
 
-Los tres modelos fueron entrenados sobre el dataset real. Los checkpoints finales están en:
+Los tres modelos fueron entrenados sobre el subconjunto `train` del reparto experimental 70/15/15 (4.099 imágenes). Los checkpoints finales están en:
 
 - `models/vgg16/best_model.keras`;
 - `models/resnet50/best_model.keras`;
 - `models/mobilenetv2/best_model.keras`.
 
-El proceso real está implementado en `src/training/run_real_training.py`. Se estableció la semilla 42, se construyeron los datasets, se aplicó augmentation a `train`, se entrenó cada backbone y se evaluó su checkpoint seleccionado por `val_loss`.
+El proceso real está implementado en `src/training/run_real_training.py`. Se estableció la semilla 42, se generó el manifiesto estratificado 70/15/15, se construyeron los datasets, se aplicó augmentation a `train`, se entrenó cada backbone y se evaluó su checkpoint seleccionado por `val_loss` sobre `validation` (879 imágenes).
 
 ## 10. Evaluación
 
-La evaluación utiliza exclusivamente el split `test`, con 624 predicciones por modelo: 234 casos `NORMAL` y 390 casos `PNEUMONIA`.
+La evaluación se divide en dos fases. Para la comparación y la selección, cada modelo se evalúa sobre el subconjunto `validation` (879 imágenes: 238 `NORMAL` y 641 `PNEUMONIA`). El conjunto `test` (878 imágenes: 237 `NORMAL` y 641 `PNEUMONIA`) queda reservado y se utiliza exclusivamente para la evaluación final del modelo ganador (MobileNetV2).
 
 La matriz se interpreta como `[[TN, FP], [FN, TP]]`, con `PNEUMONIA` como clase positiva:
 
@@ -234,13 +247,27 @@ Las predicciones binarias se obtienen con umbral 0.5. Las curvas ROC se generan 
 
 ## 11. Resultados reales
 
-Los valores siguientes fueron verificados contra `models/model_results.json` y las predicciones almacenadas:
+Los valores siguientes fueron verificados contra `models/model_results.json` y las predicciones almacenadas.
+
+Resultados sobre `validation` (879 imágenes), utilizados para la comparación y la selección del modelo:
 
 | Modelo | Balanced Accuracy | Accuracy | Precision | Recall/Sensitivity | Specificity | F1 | ROC-AUC |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| MobileNetV2 | 0.7876 | 0.8381 | 0.7992 | 0.9897 | 0.5855 | 0.8843 | 0.9539 |
-| VGG16 | 0.7179 | 0.7821 | 0.7510 | 0.9744 | 0.4615 | 0.8482 | 0.9155 |
-| ResNet50 | 0.5000 | 0.6250 | 0.6250 | 1.0000 | 0.0000 | 0.7692 | 0.8354 |
+| MobileNetV2 | 0.9293 | 0.9431 | 0.9624 | 0.9594 | 0.8992 | 0.9609 | 0.9844 |
+| VGG16 | 0.8124 | 0.8862 | 0.8826 | 0.9735 | 0.6513 | 0.9258 | 0.9608 |
+| ResNet50 | 0.5000 | 0.7292 | 0.7292 | 1.0000 | 0.0000 | 0.8434 | 0.8949 |
+
+Resultados finales sobre `test` (878 imágenes), correspondientes únicamente al modelo ganador, MobileNetV2:
+
+| Métrica | Valor |
+|---:|---:|
+| Accuracy | 0.9294 |
+| Balanced Accuracy | 0.9064 |
+| Precision | 0.9474 |
+| Recall/Sensitivity | 0.9563 |
+| Specificity | 0.8565 |
+| F1 | 0.9519 |
+| ROC-AUC | 0.9733 |
 
 ## 12. Comparación y selección
 
@@ -251,26 +278,28 @@ La regla final de selección es, en orden:
 3. F1;
 4. Accuracy.
 
+La comparación se realiza únicamente con las métricas sobre `validation`; el conjunto `test` no participa en la selección.
+
 La regla anterior `Recall -> Accuracy -> F1` fue abandonada porque podía seleccionar un modelo que detectara todos los positivos mientras clasificaba incorrectamente todos los normales.
 
-ResNet50 obtuvo:
+ResNet50 obtuvo sobre `validation`:
 
 ```text
 TN = 0
-FP = 234
+FP = 238
 FN = 0
-TP = 390
+TP = 641
 ```
 
-Por tanto, con umbral 0.5 predijo los 624 casos como `PNEUMONIA`. Su Recall es 1.0, pero su Specificity es 0.0 y su Balanced Accuracy es 0.5. Recall aislado no representa un desempeño global adecuado para este problema.
+Por tanto, con umbral 0.5 predijo los 879 casos de `validation` como `PNEUMONIA`. Su Recall es 1.0, pero su Specificity es 0.0 y su Balanced Accuracy es 0.5. Recall aislado no representa un desempeño global adecuado para este problema.
 
-El modelo seleccionado es **MobileNetV2**, porque obtiene la mayor Balanced Accuracy, Accuracy, F1 y ROC-AUC, manteniendo además un Recall de 0.9897 y una Specificity de 0.5855. Esta decisión se basa únicamente en los resultados experimentales existentes.
+El modelo seleccionado es **MobileNetV2**, por obtener la mayor Balanced Accuracy sobre `validation`, además de la mayor Accuracy, F1 y ROC-AUC, con Recall de 0.9594 y Specificity de 0.8992. Esta decisión se basa únicamente en las métricas de `validation`; `test` se utilizó después, solo para la evaluación final de MobileNetV2 (Accuracy 0.9294, Balanced Accuracy 0.9064, Precision 0.9474, Recall 0.9563, Specificity 0.8565, F1 0.9519 y ROC-AUC 0.9733).
 
 ## 13. Testing
 
-Se utiliza `pytest`. La suite actual contiene 22 pruebas y finalizó con `22 passed`.
+Se utiliza `pytest`. La suite actual contiene 23 pruebas y finalizó con `23 passed`.
 
-Las pruebas cubren carga y transformación de imágenes, estadísticas y distribución del dataset, construcción de arquitecturas, validación de entradas, matrices de confusión, métricas, selección de modelos y condiciones de error.
+Las pruebas cubren carga y transformación de imágenes, estadísticas y distribución del dataset, construcción de arquitecturas, validación de entradas, matrices de confusión, métricas, selección de modelos, generación del manifiesto estratificado y condiciones de error.
 
 ## 14. Reproducibilidad
 
@@ -294,7 +323,7 @@ El segundo comando vuelve a entrenar y evaluar los tres modelos, por lo que no d
 
 ## 15. Limitaciones
 
-- `val` contiene solamente 16 imágenes, por lo que sus métricas de seguimiento son inestables.
+- El `val` original del dataset crudo contiene solamente 16 imágenes, pero no se utiliza para la selección de modelos; la validación experimental tiene 879 imágenes.
 - Existe desbalance entre `NORMAL` y `PNEUMONIA`.
 - Hay duplicados exactos dentro de algunos splits, aunque no entre splits.
 - El trabajo es académico y experimental.
@@ -313,9 +342,9 @@ El segundo comando vuelve a entrenar y evaluar los tres modelos, por lo que no d
 | Preparación | Completada para el pipeline ejecutado |
 | Modelado | Completado para VGG16, ResNet50 y MobileNetV2 |
 | Entrenamiento | Completado con artefactos guardados |
-| Evaluación | Completada sobre `test` |
+| Evaluación | Completada sobre `validation` para la selección y sobre `test` solo para el modelo final (MobileNetV2) |
 | Comparación | Completada con criterio reproducible |
 | Selección | Completada: MobileNetV2 |
-| Testing | Completado: 22 pruebas aprobadas |
+| Testing | Completado: 23 pruebas aprobadas |
 | Documentación | Completada con este documento y la guía de ejecución |
 | Despliegue productivo | Fuera del alcance |

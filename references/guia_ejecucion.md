@@ -73,7 +73,14 @@ $images.Count
 Get-ChildItem data/raw/chest_xray -Directory -Recurse
 ```
 
-La copia validada contiene 5.856 imágenes JPEG organizadas en `train`, `val` y `test`, con las clases `NORMAL` y `PNEUMONIA`.
+La copia validada contiene 5.856 imágenes JPEG organizadas en `train`, `val` y `test`, con las clases `NORMAL` y `PNEUMONIA`. Esta es la estructura original del dataset crudo.
+
+Para el modelado se utiliza un reparto experimental estratificado 70/15/15 (semilla 42) que se genera durante la preparación de datos y que no tiene duplicados entre conjuntos:
+
+- `data/interim/stratified_split_70_15_15.csv`;
+- train: 4.099 imágenes (1.108 NORMAL, 2.991 PNEUMONIA);
+- validation: 879 imágenes (238 NORMAL, 641 PNEUMONIA);
+- test: 878 imágenes (237 NORMAL, 641 PNEUMONIA).
 
 ## 8. Ejecutar el EDA
 
@@ -87,13 +94,19 @@ El comando valida la estructura, inspecciona las imágenes y genera figuras en `
 
 ## 9. Ejecutar la preparación
 
-No existe un script independiente de preparación con interfaz de línea de comandos. La preparación se ejecuta dentro del pipeline mediante `build_data_pipelines`:
+La preparación genera primero el manifiesto estratificado 70/15/15 (semilla 42, sin duplicados por contenido entre conjuntos) mediante `create_stratified_split_manifest`:
 
 ```powershell
-.\.venv\Scripts\python.exe -c "from src.data.datasets import build_data_pipelines; d=build_data_pipelines('data/raw/chest_xray', image_size=(224,224), batch_size=16); print({k: v for k, v in d.items()})"
+.\.venv\Scripts\python.exe -c "from pathlib import Path; from src.utils.paths import DATA_DIR, PROJECT_ROOT; from src.data.splitting import create_stratified_split_manifest; p=PROJECT_ROOT/'data'/'interim'/'stratified_split_70_15_15.csv'; r=create_stratified_split_manifest(DATA_DIR, p, random_state=42); print(r.groupby('split').size().to_dict())"
 ```
 
-El pipeline carga imágenes RGB, las redimensiona a `224 x 224`, normaliza a `[0, 1]`, asigna las etiquetas binarias y crea datasets TensorFlow.
+Después se construyen los datasets TensorFlow sobre ese reparto con `build_data_pipelines`:
+
+```powershell
+.\.venv\Scripts\python.exe -c "from src.data.datasets import build_data_pipelines; d=build_data_pipelines('data/raw/chest_xray', image_size=(224,224), batch_size=16, split_manifest='data/interim/stratified_split_70_15_15.csv'); print({k: v for k, v in d.items()})"
+```
+
+El pipeline carga imágenes RGB, las redimensiona a `224 x 224`, normaliza a `[0, 1]`, asigna las etiquetas binarias y crea datasets TensorFlow para `train` (4.099), `validation` (879) y `test` (878).
 
 ## 10. Entrenar los tres modelos
 
@@ -105,20 +118,27 @@ El entry point real del entrenamiento es:
 
 Este comando sí vuelve a entrenar VGG16, ResNet50 y MobileNetV2. Produce los checkpoints, las curvas, las matrices y `models/model_results.json`. No debe ejecutarse para una simple consulta de resultados ya existentes.
 
+Los tres modelos se entrenan sobre el subconjunto `train` del reparto 70/15/15 (4.099 imágenes) y se validan sobre `validation` (879 imágenes).
+
 ## 11. Evaluación
 
-La evaluación está integrada en el comando anterior. Para cada modelo se ejecutan predicciones sobre `test`, se aplica umbral 0.5, se calculan métricas y se generan:
+La evaluación está integrada en el comando anterior. Cada modelo se evalúa primero sobre el subconjunto `validation` (879 imágenes), se aplica umbral 0.5 sobre las probabilidades y se calculan métricas. Se generan:
 
-- `reports/figures/confusion_matrix_vgg16.png`;
-- `reports/figures/confusion_matrix_resnet50.png`;
-- `reports/figures/confusion_matrix_mobilenetv2.png`;
-- `reports/figures/roc_curve_vgg16.png`;
-- `reports/figures/roc_curve_resnet50.png`;
-- `reports/figures/roc_curve_mobilenetv2.png`.
+- `reports/figures/confusion_matrix_validation_vgg16.png`;
+- `reports/figures/confusion_matrix_validation_resnet50.png`;
+- `reports/figures/confusion_matrix_validation_mobilenetv2.png`;
+- `reports/figures/roc_curve_validation_vgg16.png`;
+- `reports/figures/roc_curve_validation_resnet50.png`;
+- `reports/figures/roc_curve_validation_mobilenetv2.png`.
+
+El conjunto `test` (878 imágenes) queda reservado y solo se evalúa el modelo ganador al final, lo que genera:
+
+- `reports/figures/confusion_matrix_test_mobilenetv2.png`;
+- `reports/figures/roc_curve_test_mobilenetv2.png`.
 
 ## 12. Comparación
 
-La comparación también está integrada en `run_real_training.py`. El código utiliza este orden:
+La comparación también está integrada en `run_real_training.py` y se realiza únicamente sobre las métricas de `validation`; el conjunto `test` no participa en la selección. El código utiliza este orden:
 
 1. Balanced Accuracy;
 2. ROC-AUC;
@@ -133,12 +153,12 @@ Para consultar el ganador guardado sin entrenar:
 
 ```powershell
 $result = Get-Content -Raw models/model_results.json | ConvertFrom-Json
-$result.comparison.selection_criterion
-$result.comparison.winner.model_name
-$result.comparison.results | Format-Table model_name, balanced_accuracy, accuracy, recall, specificity, f1, roc_auc
+$result.validation_comparison.winner.model_name
+$result.validation_comparison.results | Format-Table model_name, balanced_accuracy, accuracy, recall, specificity, f1, roc_auc
+$result.final_test | Format-List model_name, accuracy, balanced_accuracy, precision, recall, specificity, f1, roc_auc
 ```
 
-El resultado actual selecciona `MobileNetV2`.
+El resultado actual selecciona `MobileNetV2` (a partir de las métricas de `validation`). El bloque `final_test` contiene las métricas del ganador sobre `test`, única evaluación realizada sobre ese conjunto.
 
 ## 14. Ejecutar los tests
 
@@ -146,12 +166,13 @@ El resultado actual selecciona `MobileNetV2`.
 .\.venv\Scripts\python.exe -m pytest
 ```
 
-La suite actual contiene 22 pruebas.
+La suite actual contiene 23 pruebas.
 
 ## 15. Ubicación de artefactos
 
 - Modelos: `models/vgg16/best_model.keras`, `models/resnet50/best_model.keras` y `models/mobilenetv2/best_model.keras`.
 - Resultados: `models/model_results.json`.
+- Manifiesto del reparto experimental: `data/interim/stratified_split_70_15_15.csv`.
 - Figuras EDA y evaluación: `reports/figures/`.
 - Código de datos: `src/data/`.
 - Código de modelos: `src/models/`.

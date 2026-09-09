@@ -8,6 +8,7 @@ from typing import Any
 import tensorflow as tf
 
 from src.data.preprocessing import build_dataset_dataframe, image_to_array, load_image
+from src.data.splitting import load_split_manifest
 
 
 def _to_tensor_dataset(df: Any, image_size: tuple[int, int], batch_size: int = 32) -> tf.data.Dataset:
@@ -35,10 +36,11 @@ def build_data_pipelines(
     batch_size: int = 32,
     validation_split: str = "val",
     test_split: str = "test",
+    split_manifest: str | Path | None = None,
 ) -> dict[str, tf.data.Dataset]:
-    """Create the training, validation and test datasets from the project folders."""
+    """Create training, validation and test datasets from folders or a manifest."""
     dataset_path = Path(dataset_dir)
-    dataframe = build_dataset_dataframe(dataset_path)
+    dataframe = load_split_manifest(split_manifest) if split_manifest else build_dataset_dataframe(dataset_path)
 
     datasets: dict[str, tf.data.Dataset] = {}
     for split_name in ["train", validation_split, test_split]:

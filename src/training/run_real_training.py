@@ -16,10 +16,11 @@ import tensorflow as tf
 from sklearn.metrics import confusion_matrix, roc_curve
 
 from src.data.datasets import build_data_pipelines
+from src.data.splitting import create_stratified_split_manifest
 from src.models.architectures import build_transfer_model
 from src.models.comparison import summarize_model_comparison
 from src.models.evaluation import compute_confusion_matrix, compute_metrics_report
-from src.utils.paths import DATA_DIR, FIGURES_DIR, MODELS_DIR, ensure_directory
+from src.utils.paths import DATA_DIR, FIGURES_DIR, MODELS_DIR, PROJECT_ROOT, ensure_directory
 
 
 SEED = 42
@@ -50,7 +51,7 @@ def build_augmentation_pipeline(train_dataset: tf.data.Dataset) -> tf.data.Datas
     return train_dataset.map(augment_examples, num_parallel_calls=tf.data.AUTOTUNE)
 
 
-def save_confusion_matrix(y_true: np.ndarray, y_pred: np.ndarray, model_name: str) -> Path:
+def save_confusion_matrix(y_true: np.ndarray, y_pred: np.ndarray, model_name: str, split_name: str) -> Path:
     """Save the normalized confusion matrix plot for a model."""
     cm = confusion_matrix(y_true, y_pred, labels=[0, 1])
     cm = cm.astype(float)
@@ -67,13 +68,13 @@ def save_confusion_matrix(y_true: np.ndarray, y_pred: np.ndarray, model_name: st
             ax.text(j, i, f"{cm[i, j]}", ha="center", va="center", color="black")
     fig.colorbar(image, ax=ax)
     plt.tight_layout()
-    output_path = FIGURES_DIR / f"confusion_matrix_{model_name.lower()}.png"
+    output_path = FIGURES_DIR / f"confusion_matrix_{split_name.lower()}_{model_name.lower()}.png"
     plt.savefig(output_path, dpi=200)
     plt.close(fig)
     return output_path
 
 
-def save_roc_curve(y_true: np.ndarray, y_prob: np.ndarray, model_name: str) -> Path:
+def save_roc_curve(y_true: np.ndarray, y_prob: np.ndarray, model_name: str, split_name: str) -> Path:
     """Save the ROC curve for a model."""
     fpr, tpr, _ = roc_curve(y_true, y_prob)
     plt.figure(figsize=(7, 6))
@@ -84,17 +85,17 @@ def save_roc_curve(y_true: np.ndarray, y_prob: np.ndarray, model_name: str) -> P
     plt.ylabel("True Positive Rate")
     plt.legend()
     plt.tight_layout()
-    output_path = FIGURES_DIR / f"roc_curve_{model_name.lower()}.png"
+    output_path = FIGURES_DIR / f"roc_curve_{split_name.lower()}_{model_name.lower()}.png"
     plt.savefig(output_path, dpi=200)
     plt.close()
     return output_path
 
 
-def evaluate_model(model: tf.keras.Model, test_dataset: tf.data.Dataset, model_name: str) -> dict[str, Any]:
-    """Evaluate a trained model on the test set and return metrics."""
+def evaluate_model(model: tf.keras.Model, dataset: tf.data.Dataset, model_name: str, split_name: str) -> dict[str, Any]:
+    """Evaluate a trained model on one dataset split and return metrics."""
     y_true_list: list[np.ndarray] = []
     y_prob_list: list[np.ndarray] = []
-    for features, labels in test_dataset:
+    for features, labels in dataset:
         predictions = model.predict(features, verbose=0)
         y_true_list.append(labels.numpy().astype(int))
         y_prob_list.append(predictions.ravel())
@@ -105,8 +106,8 @@ def evaluate_model(model: tf.keras.Model, test_dataset: tf.data.Dataset, model_n
 
     metrics = compute_metrics_report(y_true, y_prob)
     cm = compute_confusion_matrix(y_true, y_prob)
-    confusion_path = save_confusion_matrix(y_true, y_pred, model_name)
-    roc_path = save_roc_curve(y_true, y_prob, model_name)
+    confusion_path = save_confusion_matrix(y_true, y_pred, model_name, split_name)
+    roc_path = save_roc_curve(y_true, y_prob, model_name, split_name)
 
     return {
         "model_name": model_name,
@@ -114,6 +115,7 @@ def evaluate_model(model: tf.keras.Model, test_dataset: tf.data.Dataset, model_n
         "precision": float(metrics["precision"]),
         "recall": float(metrics["recall"]),
         "specificity": float(metrics["specificity"]),
+        "balanced_accuracy": float(metrics["balanced_accuracy"]),
         "f1": float(metrics["f1"]),
         "roc_auc": float(metrics["roc_auc"]),
         "confusion_matrix": cm.tolist(),
@@ -126,12 +128,19 @@ def evaluate_model(model: tf.keras.Model, test_dataset: tf.data.Dataset, model_n
 
 
 def train_and_evaluate_models() -> dict[str, Any]:
-    """Run the end-to-end training and evaluation workflow for the three models."""
+    """Train all models, select on validation, and evaluate only the winner on test."""
     ensure_directory(MODELS_DIR)
     ensure_directory(FIGURES_DIR)
     configure_runtime()
 
-    datasets = build_data_pipelines(DATA_DIR, image_size=IMAGE_SIZE, batch_size=BATCH_SIZE)
+    manifest_path = PROJECT_ROOT / "data" / "interim" / "stratified_split_70_15_15.csv"
+    split_manifest = create_stratified_split_manifest(DATA_DIR, manifest_path, random_state=SEED)
+    datasets = build_data_pipelines(
+        DATA_DIR,
+        image_size=IMAGE_SIZE,
+        batch_size=BATCH_SIZE,
+        split_manifest=manifest_path,
+    )
 
     if "train" not in datasets or "val" not in datasets or "test" not in datasets:
         raise ValueError("The dataset pipeline is incomplete. Check the real dataset structure.")
@@ -142,7 +151,7 @@ def train_and_evaluate_models() -> dict[str, Any]:
 
     train_dataset = build_augmentation_pipeline(train_dataset)
 
-    results: list[dict[str, Any]] = []
+    validation_results: list[dict[str, Any]] = []
     model_artifacts: dict[str, Any] = {}
     for model_name in ["VGG16", "ResNet50", "MobileNetV2"]:
         tf.keras.backend.clear_session()
@@ -151,8 +160,11 @@ def train_and_evaluate_models() -> dict[str, Any]:
         model = build_transfer_model(model_name=model_name, input_shape=(224, 224, 3), classes=2, weights="imagenet")
         model_dir = MODELS_DIR / model_name.lower()
         ensure_directory(model_dir)
+        best_model_path = model_dir / "best_model.keras"
+        if best_model_path.exists():
+            best_model_path.unlink()
         callbacks = [
-            tf.keras.callbacks.ModelCheckpoint(filepath=str(model_dir / "best_model.keras"), monitor="val_loss", mode="min", save_best_only=True),
+            tf.keras.callbacks.ModelCheckpoint(filepath=str(best_model_path), monitor="val_loss", mode="min", save_best_only=True),
             tf.keras.callbacks.EarlyStopping(monitor="val_loss", patience=3, restore_best_weights=True),
             tf.keras.callbacks.ReduceLROnPlateau(monitor="val_loss", factor=0.5, patience=2, min_lr=1e-6),
         ]
@@ -166,14 +178,13 @@ def train_and_evaluate_models() -> dict[str, Any]:
             verbose=1,
         )
         elapsed = time.time() - start_time
-        best_model_path = model_dir / "best_model.keras"
         if best_model_path.exists():
             model = tf.keras.models.load_model(best_model_path)
 
-        evaluation = evaluate_model(model, test_dataset, model_name)
-        evaluation["training_time_seconds"] = float(elapsed)
-        evaluation["epochs"] = int(EPOCHS)
-        evaluation["history"] = {
+        validation_evaluation = evaluate_model(model, val_dataset, model_name, "validation")
+        validation_evaluation["training_time_seconds"] = float(elapsed)
+        validation_evaluation["epochs"] = int(EPOCHS)
+        validation_evaluation["history"] = {
             "loss": [float(value) for value in history.history["loss"]],
             "val_loss": [float(value) for value in history.history["val_loss"]],
             "accuracy": [float(value) for value in history.history["accuracy"]],
@@ -181,14 +192,30 @@ def train_and_evaluate_models() -> dict[str, Any]:
         }
         model_artifacts[model_name] = {
             "model_path": str(best_model_path),
-            "metrics": evaluation,
+            "validation": validation_evaluation,
         }
-        results.append(evaluation)
+        validation_results.append(validation_evaluation)
 
-    summary = summarize_model_comparison(results)
+    summary = summarize_model_comparison(validation_results)
+    winner_name = summary["winner"]["model_name"]
+    winner_model_path = Path(model_artifacts[winner_name]["model_path"])
+    winner_model = tf.keras.models.load_model(winner_model_path)
+    final_test = evaluate_model(winner_model, test_dataset, winner_name, "test")
     results_payload = {
+        "split_manifest": str(manifest_path),
+        "split_random_state": SEED,
+        "split_ratios": {"train": 0.70, "val": 0.15, "test": 0.15},
+        "split_distribution": {
+            split_name: {
+                "total": int((split_manifest["split"] == split_name).sum()),
+                "NORMAL": int(((split_manifest["split"] == split_name) & (split_manifest["label"] == "NORMAL")).sum()),
+                "PNEUMONIA": int(((split_manifest["split"] == split_name) & (split_manifest["label"] == "PNEUMONIA")).sum()),
+            }
+            for split_name in ["train", "val", "test"]
+        },
         "models": model_artifacts,
-        "comparison": summary,
+        "validation_comparison": summary,
+        "final_test": final_test,
     }
 
     result_path = MODELS_DIR / "model_results.json"
@@ -199,4 +226,5 @@ def train_and_evaluate_models() -> dict[str, Any]:
 
 if __name__ == "__main__":
     result = train_and_evaluate_models()
-    print(json.dumps(result["comparison"], indent=2, default=str))
+    print(json.dumps(result["validation_comparison"], indent=2, default=str))
+    print(json.dumps(result["final_test"], indent=2, default=str))
