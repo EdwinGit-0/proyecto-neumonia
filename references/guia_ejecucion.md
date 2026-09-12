@@ -120,6 +120,16 @@ Este comando sí vuelve a entrenar VGG16, ResNet50 y MobileNetV2. Produce los ch
 
 Los tres modelos se entrenan sobre el subconjunto `train` del reparto 70/15/15 (4.099 imágenes) y se validan sobre `validation` (879 imágenes).
 
+### 10.1 Generar la figura de ejemplos de augmentación
+
+Para visualizar el efecto de la augmentation sobre una imagen real del `train` (la misma empleada en el entrenamiento), existe un entry point independiente que no reentrena modelos:
+
+```powershell
+.\.venv\Scripts\python.exe -m src.visualization.visualize
+```
+
+Genera `reports/figures/data_augmentation_examples.png`, una figura de 3x3 con la imagen original y variantes obtenidas únicamente con `RandomFlip("horizontal")`, `RandomRotation(0.05)` y `RandomZoom(0.05)`, incluyendo sus combinaciones.
+
 ## 11. Evaluación
 
 La evaluación está integrada en el comando anterior. Cada modelo se evalúa primero sobre el subconjunto `validation` (879 imágenes), se aplica umbral 0.5 sobre las probabilidades y se calculan métricas. Se generan:
@@ -173,10 +183,11 @@ La suite actual contiene 23 pruebas.
 - Modelos: `models/vgg16/best_model.keras`, `models/resnet50/best_model.keras` y `models/mobilenetv2/best_model.keras`.
 - Resultados: `models/model_results.json`.
 - Manifiesto del reparto experimental: `data/interim/stratified_split_70_15_15.csv`.
-- Figuras EDA y evaluación: `reports/figures/`.
+- Figuras EDA, evaluación y augmentación: `reports/figures/`.
 - Código de datos: `src/data/`.
 - Código de modelos: `src/models/`.
 - Código de entrenamiento: `src/training/`.
+- Código de visualización: `src/visualization/`.
 - Tests: `tests/`.
 
 ## 16. Solución de problemas comunes

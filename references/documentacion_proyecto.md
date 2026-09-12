@@ -183,6 +183,8 @@ La partición experimental la genera `src/data/splitting.py` con `create_stratif
 
 Durante la ejecución real se utilizó batch size 16. La data augmentation se aplicó únicamente a `train` mediante `RandomFlip("horizontal")`, `RandomRotation(0.05)` y `RandomZoom(0.05)`. `val` y `test` no reciben augmentation. No se implementó oversampling, undersampling ni ponderación de clases.
 
+Para documentar visualmente este proceso, `src/visualization/visualize.py` implementa `plot_data_augmentation_examples`, que toma una imagen real del `train` experimental, le aplica únicamente esas tres transformaciones (incluyendo sus combinaciones) y genera una figura de 3x3 en `reports/figures/data_augmentation_examples.png`, con la imagen original y variantes de volteo, rotación y zoom.
+
 El código no utiliza `preprocess_input` específico de cada backbone; la transformación implementada es la normalización general a `[0, 1]`.
 
 ## 8. Modelos
@@ -315,11 +317,12 @@ Comandos principales del flujo actual:
 
 ```powershell
 .\.venv\Scripts\python.exe -m src.data.make_dataset
+.\.venv\Scripts\python.exe -m src.visualization.visualize
 .\.venv\Scripts\python.exe -m src.training.run_real_training
 .\.venv\Scripts\python.exe -m pytest
 ```
 
-El segundo comando vuelve a entrenar y evaluar los tres modelos, por lo que no debe ejecutarse si solo se desea consultar los artefactos ya generados.
+El tercer comando vuelve a entrenar y evaluar los tres modelos, por lo que no debe ejecutarse si solo se desea consultar los artefactos ya generados. El segundo genera la figura de ejemplos de augmentación (`reports/figures/data_augmentation_examples.png`) sin entrenar modelos.
 
 ## 15. Limitaciones
 
