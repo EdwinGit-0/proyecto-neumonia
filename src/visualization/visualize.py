@@ -1,4 +1,4 @@
-"""Visualization helpers for the pneumonia chest X-ray project."""
+"""Funciones de visualización para el proyecto de neumonía en radiografías de tórax."""
 
 from __future__ import annotations
 
@@ -11,24 +11,24 @@ import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
 
-from src.data.preprocessing import image_to_array, load_image
-from src.data.splitting import load_split_manifest
-from src.utils.paths import DATA_DIR, FIGURES_DIR, PROJECT_ROOT, ensure_directory
+from src.data.preprocessing import imagen_a_arreglo, cargar_imagen
+from src.data.splitting import cargar_manifiesto_division
+from src.utils.paths import DIRECTORIO_DATOS, DIRECTORIO_FIGURAS, RAIZ_PROYECTO, asegurar_directorio
 
 
-IMAGE_SIZE = (224, 224)
-MANIFEST_PATH = PROJECT_ROOT / "data" / "interim" / "stratified_split_70_15_15.csv"
+TAMANO_IMAGEN = (224, 224)
+RUTA_MANIFIESTO = RAIZ_PROYECTO / "data" / "interim" / "stratified_split_70_15_15.csv"
 
 
-def _select_train_image() -> Path | None:
-    """Return one real image from the experimental training split."""
-    if MANIFEST_PATH.exists():
-        manifest = load_split_manifest(MANIFEST_PATH)
+def _seleccionar_imagen_entrenamiento() -> Path | None:
+    """Devolver una imagen real del conjunto de entrenamiento experimental."""
+    if RUTA_MANIFIESTO.exists():
+        manifest = cargar_manifiesto_division(RUTA_MANIFIESTO)
         train_records = manifest[manifest["split"] == "train"]
         train_records = train_records[train_records["label"] == "NORMAL"]
         if not train_records.empty:
             return Path(train_records.iloc[0]["path"])
-    train_normal = Path(DATA_DIR) / "train" / "NORMAL"
+    train_normal = Path(DIRECTORIO_DATOS) / "train" / "NORMAL"
     if train_normal.is_dir():
         images = sorted(train_normal.iterdir())
         if images:
@@ -36,17 +36,17 @@ def _select_train_image() -> Path | None:
     return None
 
 
-def _apply_layer(image_array: np.ndarray, layer: tf.keras.layers.Layer) -> np.ndarray:
-    """Apply a single augmentation layer to a normalized image."""
+def _aplicar_capa(image_array: np.ndarray, layer: tf.keras.layers.Layer) -> np.ndarray:
+    """Aplicar una capa de augmentation a una imagen normalizada."""
     batch = layer(image_array[np.newaxis, ...], training=True)
     return np.asarray(batch[0])
 
 
-def build_augmentation_variants(image_array: np.ndarray) -> list[tuple[str, np.ndarray]]:
-    """Apply the project's existing augmentation transforms to a single image.
+def construir_variantes_augmentation(image_array: np.ndarray) -> list[tuple[str, np.ndarray]]:
+    """Aplicar las transformaciones de augmentation existentes del proyecto a una sola imagen.
 
-    Only RandomFlip("horizontal"), RandomRotation(0.05) and RandomZoom(0.05)
-    are used, matching the training pipeline exactly.
+    Solo se utilizan RandomFlip("horizontal"), RandomRotation(0.05) y RandomZoom(0.05),
+    reproduciendo exactamente el pipeline de entrenamiento.
     """
     flip = lambda: tf.keras.layers.RandomFlip("horizontal")
     rotation = lambda: tf.keras.layers.RandomRotation(0.05)
@@ -73,27 +73,27 @@ def build_augmentation_variants(image_array: np.ndarray) -> list[tuple[str, np.n
         array = original
         for layer in layers:
             before = array
-            array = _apply_layer(array, layer)
+            array = _aplicar_capa(array, layer)
             if isinstance(layer, tf.keras.layers.RandomFlip) and np.array_equal(array, before):
                 seed = 0
                 while np.array_equal(array, before) and seed < 64:
-                    array = _apply_layer(before, tf.keras.layers.RandomFlip("horizontal", seed=seed))
+                    array = _aplicar_capa(before, tf.keras.layers.RandomFlip("horizontal", seed=seed))
                     seed += 1
         generated.append((label, array))
     return generated
 
 
-def plot_data_augmentation_examples(
-    output_path: str | Path = FIGURES_DIR / "data_augmentation_examples.png",
+def graficar_ejemplos_augmentation(
+    ruta_salida: str | Path = DIRECTORIO_FIGURAS / "data_augmentation_examples.png",
 ) -> Path:
-    """Create a 3x3 figure showing data augmentation on one training image."""
-    train_image = _select_train_image()
+    """Crear una figura de 3x3 que muestra la augmentation de datos sobre una imagen de entrenamiento."""
+    train_image = _seleccionar_imagen_entrenamiento()
     if train_image is None:
-        raise FileNotFoundError("No training images found to illustrate data augmentation.")
+        raise FileNotFoundError("No se encontraron imágenes de entrenamiento para ilustrar la augmentation de datos.")
 
-    source = load_image(train_image)
-    image_array = image_to_array(source, IMAGE_SIZE)
-    variants = build_augmentation_variants(image_array)
+    source = cargar_imagen(train_image)
+    image_array = imagen_a_arreglo(source, TAMANO_IMAGEN)
+    variants = construir_variantes_augmentation(image_array)
 
     fig, axes = plt.subplots(3, 3, figsize=(9, 9))
     fig.suptitle(
@@ -106,13 +106,13 @@ def plot_data_augmentation_examples(
         axis.axis("off")
 
     fig.tight_layout(rect=(0, 0, 1, 0.96))
-    output = Path(output_path)
-    ensure_directory(output.parent)
+    output = Path(ruta_salida)
+    asegurar_directorio(output.parent)
     fig.savefig(output, dpi=200, bbox_inches="tight")
     plt.close(fig)
     return output
 
 
 if __name__ == "__main__":
-    result = plot_data_augmentation_examples()
+    result = graficar_ejemplos_augmentation()
     print(result)

@@ -3,20 +3,20 @@ from pathlib import Path
 import pandas as pd
 
 from src.data.make_dataset import (
-    collect_image_records,
-    get_dataset_summary,
-    save_eda_figures,
+    recopilar_registros_imagenes,
+    construir_resumen_dataset,
+    guardar_figuras_eda,
 )
 
 
-def _create_test_image(path: Path, width: int = 32, height: int = 32, color_mode: str = "RGB") -> None:
+def _crear_imagen_prueba(path: Path, width: int = 32, height: int = 32, color_mode: str = "RGB") -> None:
     from PIL import Image
 
     image = Image.new(color_mode, (width, height), color="white")
     image.save(path)
 
 
-def test_collect_image_records_counts_images_by_split_and_class(tmp_path: Path) -> None:
+def test_recopilar_registros_imagenes_cuenta_imagenes_por_conjunto_y_clase(tmp_path: Path) -> None:
     data_dir = tmp_path / "chest_xray"
     for split, label, count in [
         ("train", "NORMAL", 2),
@@ -27,9 +27,9 @@ def test_collect_image_records_counts_images_by_split_and_class(tmp_path: Path) 
         folder = data_dir / split / label
         folder.mkdir(parents=True, exist_ok=True)
         for index in range(count):
-            _create_test_image(folder / f"img_{index}.png")
+            _crear_imagen_prueba(folder / f"img_{index}.png")
 
-    records = collect_image_records(data_dir)
+    records = recopilar_registros_imagenes(data_dir)
 
     assert isinstance(records, pd.DataFrame)
     assert records["split"].nunique() == 3
@@ -43,21 +43,21 @@ def test_collect_image_records_counts_images_by_split_and_class(tmp_path: Path) 
     }
 
 
-def test_get_dataset_summary_detects_corrupt_and_duplicate_images(tmp_path: Path) -> None:
+def test_obtener_resumen_dataset_detecta_imagenes_corruptas_y_duplicadas(tmp_path: Path) -> None:
     data_dir = tmp_path / "chest_xray"
     train_dir = data_dir / "train" / "NORMAL"
     train_dir.mkdir(parents=True, exist_ok=True)
 
-    image_path = train_dir / "sample.png"
+    ruta_imagen = train_dir / "sample.png"
     duplicate_path = train_dir / "sample_copy.png"
-    _create_test_image(image_path)
-    image_path.read_bytes()
-    duplicate_path.write_bytes(image_path.read_bytes())
+    _crear_imagen_prueba(ruta_imagen)
+    ruta_imagen.read_bytes()
+    duplicate_path.write_bytes(ruta_imagen.read_bytes())
 
     corrupt_path = train_dir / "broken.png"
     corrupt_path.write_bytes(b"not-a-valid-image")
 
-    summary = get_dataset_summary(data_dir)
+    summary = construir_resumen_dataset(data_dir)
 
     assert summary["total_images"] == 3
     assert summary["counts_by_split_and_class"]["train"]["NORMAL"] == 3
@@ -65,7 +65,7 @@ def test_get_dataset_summary_detects_corrupt_and_duplicate_images(tmp_path: Path
     assert corrupt_path in summary["corrupt_images"]
 
 
-def test_save_eda_figures_creates_outputs(tmp_path: Path) -> None:
+def test_guardar_figuras_eda_crea_archivos(tmp_path: Path) -> None:
     records = pd.DataFrame(
         [
             {"split": "train", "label": "NORMAL", "path": "/tmp/norm1.png", "extension": ".png", "file_size_bytes": 200, "width": 224, "height": 224, "mode": "RGB"},
@@ -74,8 +74,8 @@ def test_save_eda_figures_creates_outputs(tmp_path: Path) -> None:
         ]
     )
 
-    output_dir = tmp_path / "figures"
-    created = save_eda_figures(records, output_dir)
+    directorio_salida = tmp_path / "figures"
+    created = guardar_figuras_eda(records, directorio_salida)
 
     assert set(created.keys()) == {"distribution", "sizes", "dimensions"}
     for path in created.values():

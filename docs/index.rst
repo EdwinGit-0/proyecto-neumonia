@@ -1,12 +1,12 @@
-.. proyecto-neumonia documentation master file, created by
+.. Archivo maestro de la documentación de proyecto-neumonia, creado por
    sphinx-quickstart.
-   You can adapt this file completely to your liking, but it should at least
-   contain the root `toctree` directive.
+   Puede adaptar este archivo por completo a su gusto, pero al menos debe
+   contener la directiva raíz `toctree`.
 
-proyecto-neumonia documentation!
-==============================================
+Documentación de proyecto-neumonia
+==================================
 
-Contents:
+Contenidos:
 
 .. toctree::
    :maxdepth: 2
@@ -16,8 +16,8 @@ Contents:
 
 
 
-Indices and tables
-==================
+Índices y tablas
+================
 
 * :ref:`genindex`
 * :ref:`modindex`

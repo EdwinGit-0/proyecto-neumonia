@@ -1,4 +1,4 @@
-"""Transfer-learning model builders for the pneumonia classification task."""
+"""Constructores de modelos con transferencia de aprendizaje para la clasificación de neumonía."""
 
 from __future__ import annotations
 
@@ -10,21 +10,21 @@ from tensorflow.keras.applications import MobileNetV2, ResNet50, VGG16
 from tensorflow.keras.models import Model
 
 
-MODEL_NAMES = {"VGG16", "ResNet50", "MobileNetV2"}
+NOMBRES_MODELOS = {"VGG16", "ResNet50", "MobileNetV2"}
 
 
-def build_transfer_model(
+def construir_modelo_transferencia(
     model_name: str,
     input_shape: tuple[int, int, int] = (224, 224, 3),
     classes: int = 2,
     weights: str | None = "imagenet",
 ) -> Model:
-    """Create a transfer-learning model for chest X-ray classification."""
-    if model_name not in MODEL_NAMES:
-        raise ValueError(f"Unsupported model: {model_name}. Available models: {sorted(MODEL_NAMES)}")
+    """Crear un modelo con transferencia de aprendizaje para la clasificación de radiografías."""
+    if model_name not in NOMBRES_MODELOS:
+        raise ValueError(f"Modelo no compatible: {model_name}. Modelos disponibles: {sorted(NOMBRES_MODELOS)}")
 
     if input_shape[0] < 32 or input_shape[1] < 32:
-        raise ValueError("Input shape must be at least 32x32 pixels.")
+        raise ValueError("La forma de entrada debe tener al menos 32x32 píxeles.")
 
     if model_name == "VGG16":
         base_model = VGG16(
@@ -62,10 +62,10 @@ def build_transfer_model(
     return model
 
 
-def get_model_registry() -> dict[str, Any]:
-    """Return the available model builders."""
+def obtener_registro_modelos() -> dict[str, Any]:
+    """Devolver los constructores de modelos disponibles."""
     return {
-        "VGG16": lambda **kwargs: build_transfer_model("VGG16", **kwargs),
-        "ResNet50": lambda **kwargs: build_transfer_model("ResNet50", **kwargs),
-        "MobileNetV2": lambda **kwargs: build_transfer_model("MobileNetV2", **kwargs),
+        "VGG16": lambda **kwargs: construir_modelo_transferencia("VGG16", **kwargs),
+        "ResNet50": lambda **kwargs: construir_modelo_transferencia("ResNet50", **kwargs),
+        "MobileNetV2": lambda **kwargs: construir_modelo_transferencia("MobileNetV2", **kwargs),
     }

@@ -379,7 +379,7 @@ Ejemplo:
 class ImageAnalyzer:
     """Analyze image dataset properties."""
 
-    def get_image_dimensions(self, image_path):
+    def get_image_dimensions(self, ruta_imagen):
         """Return image dimensions."""
         ...
 ```
@@ -509,8 +509,8 @@ Ejemplo:
 ```python
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DATA_DIR = PROJECT_ROOT / "data" / "raw" / "chest_xray"
+RAIZ_PROYECTO = Path(__file__).resolve().parents[2]
+DIRECTORIO_DATOS = RAIZ_PROYECTO / "data" / "raw" / "chest_xray"
 ```
 
 La ruta debe funcionar para otros usuarios que clonen el repositorio.

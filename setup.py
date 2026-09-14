@@ -7,4 +7,9 @@ setup(
     description='Clasificacion de imagenes de rayos X de torax para la identificacion de neumonia mediante redes neuronales convolucionales',
     author='EDWIN ROQUE CERROGRANDE',
     license='MIT',
+    entry_points={
+        'console_scripts': [
+            'neumonia=src.cli:cli',
+        ],
+    },
 )

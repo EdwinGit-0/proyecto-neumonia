@@ -82,7 +82,60 @@ Para el modelado se utiliza un reparto experimental estratificado 70/15/15 (semi
 - validation: 879 imágenes (238 NORMAL, 641 PNEUMONIA);
 - test: 878 imágenes (237 NORMAL, 641 PNEUMONIA).
 
-## 8. Ejecutar el EDA
+## 8. Flujo rápido con la CLI `neumonia`
+
+El proyecto incluye una interfaz de línea de comandos (CLI) que permite ejecutar cada etapa con un comando corto. La CLI solo invoca las funciones existentes del proyecto; no cambia la lógica científica ni los resultados.
+
+Los comandos disponibles son:
+
+```powershell
+neumonia eda        # Análisis exploratorio de datos (sección 9)
+neumonia prepare    # Preparación de datos: manifiesto 70/15/15 y verificación de pipelines (sección 10)
+neumonia augment    # Figura de ejemplos de augmentación (sección 11.1)
+neumonia train      # Entrenar VGG16, ResNet50 y MobileNetV2; evaluar, comparar y seleccionar (sección 11)
+neumonia evaluate   # Mostrar los resultados guardados sin volver a entrenar (sección 14)
+neumonia test       # Ejecutar la suite de pruebas con pytest (sección 15)
+neumonia run        # Flujo completo: EDA -> preparación -> augmentación -> entrenamiento -> evaluación -> test
+```
+
+Cada comando de la CLI equivale exactamente al entry point `python -m ...` de las secciones siguientes.
+
+### 8.1 Instalar y dejar el comando disponible
+
+La CLI se registra junto con el proyecto en el paso 4 mediante `pip install -r requirements.txt` (requisito `-e .`). Si las dependencias se instalaron antes de que existiera la CLI, registrar el ejecutable con:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -e .
+```
+
+Con el entorno activado, el comando queda disponible directamente:
+
+```powershell
+neumonia --help
+neumonia eda --help
+```
+
+### 8.2 Flujo recomendado
+
+```powershell
+dvc pull data/raw/chest_xray.dvc
+neumonia eda
+neumonia prepare
+neumonia augment
+neumonia train
+neumonia evaluate
+neumonia test
+```
+
+`neumonia train` consume bastante tiempo y recursos. `neumonia run` encadena todas las etapas en ese mismo orden (no ejecuta `dvc pull`; el dataset se administra con DVC).
+
+Como alternativa, cada comando se puede invocar con el intérprete del entorno sin activarlo:
+
+```powershell
+.\.venv\Scripts\python.exe -m src.cli train
+```
+
+## 9. Ejecutar el EDA
 
 El módulo ejecutable del EDA es:
 
@@ -92,23 +145,23 @@ El módulo ejecutable del EDA es:
 
 El comando valida la estructura, inspecciona las imágenes y genera figuras en `reports/figures/`. El notebook asociado es `notebooks/01_comprension_datos_eda.ipynb`.
 
-## 9. Ejecutar la preparación
+## 10. Ejecutar la preparación
 
-La preparación genera primero el manifiesto estratificado 70/15/15 (semilla 42, sin duplicados por contenido entre conjuntos) mediante `create_stratified_split_manifest`:
+La preparación genera primero el manifiesto estratificado 70/15/15 (semilla 42, sin duplicados por contenido entre conjuntos) mediante `crear_manifiesto_division_estratificada`:
 
 ```powershell
-.\.venv\Scripts\python.exe -c "from pathlib import Path; from src.utils.paths import DATA_DIR, PROJECT_ROOT; from src.data.splitting import create_stratified_split_manifest; p=PROJECT_ROOT/'data'/'interim'/'stratified_split_70_15_15.csv'; r=create_stratified_split_manifest(DATA_DIR, p, random_state=42); print(r.groupby('split').size().to_dict())"
+.\.venv\Scripts\python.exe -c "from pathlib import Path; from src.utils.paths import DIRECTORIO_DATOS, RAIZ_PROYECTO; from src.data.splitting import crear_manifiesto_division_estratificada; p=RAIZ_PROYECTO/'data'/'interim'/'stratified_split_70_15_15.csv'; r=crear_manifiesto_division_estratificada(DIRECTORIO_DATOS, p, random_state=42); print(r.groupby('split').size().to_dict())"
 ```
 
-Después se construyen los datasets TensorFlow sobre ese reparto con `build_data_pipelines`:
+Después se construyen los datasets TensorFlow sobre ese reparto con `construir_pipelines_datos`:
 
 ```powershell
-.\.venv\Scripts\python.exe -c "from src.data.datasets import build_data_pipelines; d=build_data_pipelines('data/raw/chest_xray', image_size=(224,224), batch_size=16, split_manifest='data/interim/stratified_split_70_15_15.csv'); print({k: v for k, v in d.items()})"
+.\.venv\Scripts\python.exe -c "from src.data.datasets import construir_pipelines_datos; d=construir_pipelines_datos('data/raw/chest_xray', image_size=(224,224), batch_size=16, manifiesto_division='data/interim/stratified_split_70_15_15.csv'); print({k: v for k, v in d.items()})"
 ```
 
 El pipeline carga imágenes RGB, las redimensiona a `224 x 224`, normaliza a `[0, 1]`, asigna las etiquetas binarias y crea datasets TensorFlow para `train` (4.099), `validation` (879) y `test` (878).
 
-## 10. Entrenar los tres modelos
+## 11. Entrenar los tres modelos
 
 El entry point real del entrenamiento es:
 
@@ -120,7 +173,7 @@ Este comando sí vuelve a entrenar VGG16, ResNet50 y MobileNetV2. Produce los ch
 
 Los tres modelos se entrenan sobre el subconjunto `train` del reparto 70/15/15 (4.099 imágenes) y se validan sobre `validation` (879 imágenes).
 
-### 10.1 Generar la figura de ejemplos de augmentación
+### 11.1 Generar la figura de ejemplos de augmentación
 
 Para visualizar el efecto de la augmentation sobre una imagen real del `train` (la misma empleada en el entrenamiento), existe un entry point independiente que no reentrena modelos:
 
@@ -130,7 +183,7 @@ Para visualizar el efecto de la augmentation sobre una imagen real del `train` (
 
 Genera `reports/figures/data_augmentation_examples.png`, una figura de 3x3 con la imagen original y variantes obtenidas únicamente con `RandomFlip("horizontal")`, `RandomRotation(0.05)` y `RandomZoom(0.05)`, incluyendo sus combinaciones.
 
-## 11. Evaluación
+## 12. Evaluación
 
 La evaluación está integrada en el comando anterior. Cada modelo se evalúa primero sobre el subconjunto `validation` (879 imágenes), se aplica umbral 0.5 sobre las probabilidades y se calculan métricas. Se generan:
 
@@ -146,7 +199,7 @@ El conjunto `test` (878 imágenes) queda reservado y solo se evalúa el modelo g
 - `reports/figures/confusion_matrix_test_mobilenetv2.png`;
 - `reports/figures/roc_curve_test_mobilenetv2.png`.
 
-## 12. Comparación
+## 13. Comparación
 
 La comparación también está integrada en `run_real_training.py` y se realiza únicamente sobre las métricas de `validation`; el conjunto `test` no participa en la selección. El código utiliza este orden:
 
@@ -157,7 +210,7 @@ La comparación también está integrada en `run_real_training.py` y se realiza 
 
 El resultado se persiste en `models/model_results.json`.
 
-## 13. Consultar el modelo seleccionado
+## 14. Consultar el modelo seleccionado
 
 Para consultar el ganador guardado sin entrenar:
 
@@ -170,7 +223,7 @@ $result.final_test | Format-List model_name, accuracy, balanced_accuracy, precis
 
 El resultado actual selecciona `MobileNetV2` (a partir de las métricas de `validation`). El bloque `final_test` contiene las métricas del ganador sobre `test`, única evaluación realizada sobre ese conjunto.
 
-## 14. Ejecutar los tests
+## 15. Ejecutar los tests
 
 ```powershell
 .\.venv\Scripts\python.exe -m pytest
@@ -178,7 +231,7 @@ El resultado actual selecciona `MobileNetV2` (a partir de las métricas de `vali
 
 La suite actual contiene 23 pruebas.
 
-## 15. Ubicación de artefactos
+## 16. Ubicación de artefactos
 
 - Modelos: `models/vgg16/best_model.keras`, `models/resnet50/best_model.keras` y `models/mobilenetv2/best_model.keras`.
 - Resultados: `models/model_results.json`.
@@ -190,7 +243,7 @@ La suite actual contiene 23 pruebas.
 - Código de visualización: `src/visualization/`.
 - Tests: `tests/`.
 
-## 16. Solución de problemas comunes
+## 17. Solución de problemas comunes
 
 ### No se encuentra `dvc`
 
@@ -231,7 +284,7 @@ El script entrena tres modelos y ejecuta tres epochs sobre CPU si no hay GPU con
 
 ### Se desea consultar resultados sin reentrenar
 
-No ejecutar `run_real_training.py`. Leer `models/model_results.json` y consultar las figuras y checkpoints ya existentes.
+No ejecutar `run_real_training.py`. Usar `neumonia evaluate` para consultar los resultados guardados, o leer `models/model_results.json` y revisar las figuras y los checkpoints ya existentes.
 
 ### Falla `make requirements`
 

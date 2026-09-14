@@ -1,4 +1,4 @@
-"""Image preprocessing utilities for the chest X-ray dataset."""
+"""Utilidades de preprocesamiento de imágenes para el dataset de radiografías de tórax."""
 
 from __future__ import annotations
 
@@ -9,30 +9,30 @@ import numpy as np
 import pandas as pd
 from PIL import Image
 
+def cargar_imagen(ruta_imagen: str | Path) -> Image.Image:
+    """Cargar una imagen desde disco y devolver un objeto PIL Image."""
 
-def load_image(image_path: str | Path) -> Image.Image:
-    """Load an image from disk and return a PIL Image object."""
-    path = Path(image_path)
+    path = Path(ruta_imagen)
     if not path.exists():
-        raise FileNotFoundError(f"Image not found: {path}")
+        raise FileNotFoundError(f"Imagen no encontrada: {path}")
     return Image.open(path).convert("RGB")
 
 
-def resize_image(image: Image.Image, target_size: tuple[int, int]) -> Image.Image:
-    """Resize an image while preserving the requested dimensions."""
+def redimensionar_imagen(image: Image.Image, target_size: tuple[int, int]) -> Image.Image:
+    """Redimensionar una imagen conservando las dimensiones solicitadas."""
     if target_size[0] <= 0 or target_size[1] <= 0:
-        raise ValueError("target_size must contain positive values")
+        raise ValueError("target_size debe contener valores positivos")
     return image.resize(target_size, Image.Resampling.BILINEAR)
 
 
-def normalize_image(image: Image.Image) -> np.ndarray:
-    """Convert a PIL image to a float array normalized to the [0, 1] range."""
+def normalizar_imagen(image: Image.Image) -> np.ndarray:
+    """Convertir una imagen PIL a un arreglo flotante normalizado al rango [0, 1]."""
     array = np.asarray(image, dtype=np.float32)
     return array / 255.0
 
 
-def compute_image_statistics(image: Image.Image) -> dict[str, float | int]:
-    """Compute basic image statistics for a loaded image."""
+def calcular_estadisticas_imagen(image: Image.Image) -> dict[str, float | int]:
+    """Calcular estadísticas básicas de una imagen cargada."""
     array = np.asarray(image)
     mean_value = float(array.mean())
     std_value = float(array.std())
@@ -45,8 +45,8 @@ def compute_image_statistics(image: Image.Image) -> dict[str, float | int]:
     }
 
 
-def build_class_distribution(records: pd.DataFrame) -> dict[str, dict[str, int]]:
-    """Summarize the dataset distribution by split and class."""
+def construir_distribucion_clases(records: pd.DataFrame) -> dict[str, dict[str, int]]:
+    """Resumir la distribución del dataset por conjunto y clase."""
     distribution: dict[str, dict[str, int]] = {}
     for split_name in sorted(records["split"].dropna().unique()):
         split_records = records[records["split"] == split_name]
@@ -57,16 +57,16 @@ def build_class_distribution(records: pd.DataFrame) -> dict[str, dict[str, int]]
     return distribution
 
 
-def image_to_array(image: Image.Image, target_size: tuple[int, int]) -> np.ndarray:
-    """Return a normalized image tensor ready for model input."""
-    resized = resize_image(image, target_size)
-    normalized = normalize_image(resized)
+def imagen_a_arreglo(image: Image.Image, target_size: tuple[int, int]) -> np.ndarray:
+    """Devolver un tensor de imagen normalizado y listo para la entrada del modelo."""
+    resized = redimensionar_imagen(image, target_size)
+    normalized = normalizar_imagen(resized)
     return normalized.astype(np.float32)
 
 
-def build_dataset_dataframe(dataset_dir: Path | str) -> pd.DataFrame:
-    """Build a dataframe with one row per image and the corresponding target label."""
-    dataset_path = Path(dataset_dir)
+def construir_dataframe_dataset(directorio_dataset: Path | str) -> pd.DataFrame:
+    """Construir un DataFrame con una fila por imagen y su etiqueta objetivo."""
+    dataset_path = Path(directorio_dataset)
     rows: list[dict[str, Any]] = []
 
     for split_name in ["train", "val", "test"]:
@@ -77,13 +77,13 @@ def build_dataset_dataframe(dataset_dir: Path | str) -> pd.DataFrame:
             if not class_dir.is_dir():
                 continue
             label = class_dir.name
-            for image_path in sorted(class_dir.iterdir()):
-                if image_path.is_file():
+            for ruta_imagen in sorted(class_dir.iterdir()):
+                if ruta_imagen.is_file():
                     rows.append(
                         {
                             "split": split_name,
                             "label": label,
-                            "path": str(image_path),
+                            "path": str(ruta_imagen),
                             "target": 1 if label == "PNEUMONIA" else 0,
                         }
                     )

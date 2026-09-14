@@ -1,7 +1,7 @@
-# local package
+# Paquete local
 -e .
 
-# external requirements
+# Requisitos externos
 click
 Sphinx
 coverage
@@ -18,5 +18,5 @@ scikit-learn
 tensorflow-cpu==2.15.0
 dvc[gdrive]
 
-# backwards compatibility
+# Compatibilidad con versiones anteriores
 pathlib2

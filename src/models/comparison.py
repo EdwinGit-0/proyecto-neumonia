@@ -1,14 +1,14 @@
-"""Comparison utilities for model selection and reporting."""
+"""Utilidades de comparación para la selección de modelos y los reportes."""
 
 from __future__ import annotations
 
 from typing import Any
 
-from src.models.evaluation import select_best_model
+from src.models.evaluation import seleccionar_mejor_modelo
 
 
-def build_results_table(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Return results ordered by balanced accuracy and standard tie-breakers."""
+def construir_tabla_resultados(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Devolver los resultados ordenados por exactitud balanceada y desempates estándar."""
     return sorted(
         results,
         key=lambda item: (
@@ -20,10 +20,10 @@ def build_results_table(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
     )
 
 
-def summarize_model_comparison(results: list[dict[str, Any]]) -> dict[str, Any]:
-    """Create a summary with the winning model and the ordered table."""
+def resumir_comparacion_modelos(results: list[dict[str, Any]]) -> dict[str, Any]:
+    """Crear un resumen con el modelo ganador y la tabla ordenada."""
     if not results:
-        raise ValueError("results must not be empty.")
-    ordered = build_results_table(results)
-    winner = select_best_model(ordered)
+        raise ValueError("results no debe estar vacío.")
+    ordered = construir_tabla_resultados(results)
+    winner = seleccionar_mejor_modelo(ordered)
     return {"winner": winner, "results": ordered}

@@ -1,4 +1,4 @@
-"""Training and checkpoint utilities for the Pneumonia classification pipeline."""
+"""Utilidades de entrenamiento y checkpoints para el pipeline de clasificación de neumonía."""
 
 from __future__ import annotations
 
@@ -8,20 +8,20 @@ from typing import Any
 import numpy as np
 import tensorflow as tf
 
-from src.models.architectures import build_transfer_model
-from src.utils.paths import ensure_directory, MODELS_DIR
+from src.models.architectures import construir_modelo_transferencia
+from src.utils.paths import asegurar_directorio, DIRECTORIO_MODELOS
 
 
-def set_seed(seed: int = 42) -> None:
-    """Set a reproducible random seed across the relevant libraries."""
+def establecer_semilla(seed: int = 42) -> None:
+    """Establecer una semilla aleatoria reproducible en las librerías relevantes."""
     np.random.seed(seed)
     tf.random.set_seed(seed)
 
 
-def build_training_callbacks(model_dir: Path | str) -> list[Any]:
-    """Create the standard callbacks for model training."""
-    model_path = Path(model_dir)
-    ensure_directory(model_path)
+def construir_callbacks_entrenamiento(directorio_modelo: Path | str) -> list[Any]:
+    """Crear los callbacks estándar para el entrenamiento de modelos."""
+    model_path = Path(directorio_modelo)
+    asegurar_directorio(model_path)
 
     checkpoint = tf.keras.callbacks.ModelCheckpoint(
         filepath=str(model_path / "best_model.keras"),
@@ -44,20 +44,20 @@ def build_training_callbacks(model_dir: Path | str) -> list[Any]:
     return [checkpoint, early_stopping, reduce_lr]
 
 
-def train_model(
+def entrenar_modelo(
     model_name: str,
-    train_data: Any,
-    validation_data: Any,
+    datos_entrenamiento: Any,
+    datos_validacion: Any,
     input_shape: tuple[int, int, int] = (224, 224, 3),
     epochs: int = 10,
     batch_size: int = 32,
     learning_rate: float = 1e-4,
     seed: int = 42,
-    output_dir: Path | str | None = None,
+    directorio_salida: Path | str | None = None,
 ) -> tuple[Any, tf.keras.callbacks.History]:
-    """Train a transfer-learning model on the provided datasets."""
-    set_seed(seed)
-    model = build_transfer_model(
+    """Entrenar un modelo con transferencia de aprendizaje sobre los datasets proporcionados."""
+    establecer_semilla(seed)
+    model = construir_modelo_transferencia(
         model_name=model_name,
         input_shape=input_shape,
         classes=2,
@@ -65,14 +65,14 @@ def train_model(
     )
     model.optimizer.learning_rate.assign(learning_rate)
 
-    model_dir = Path(output_dir) if output_dir is not None else MODELS_DIR / model_name.lower()
-    ensure_directory(model_dir)
+    directorio_modelo = Path(directorio_salida) if directorio_salida is not None else DIRECTORIO_MODELOS / model_name.lower()
+    asegurar_directorio(directorio_modelo)
     history = model.fit(
-        train_data,
-        validation_data=validation_data,
+        datos_entrenamiento,
+        validation_data=datos_validacion,
         epochs=epochs,
         batch_size=batch_size,
-        callbacks=build_training_callbacks(model_dir),
+        callbacks=construir_callbacks_entrenamiento(directorio_modelo),
         verbose=1,
     )
     return model, history
