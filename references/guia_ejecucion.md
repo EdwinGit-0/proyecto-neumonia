@@ -75,12 +75,12 @@ Get-ChildItem data/raw/chest_xray -Directory -Recurse
 
 La copia validada contiene 5.856 imágenes JPEG organizadas en `train`, `val` y `test`, con las clases `NORMAL` y `PNEUMONIA`. Esta es la estructura original del dataset crudo.
 
-Para el modelado se utiliza un reparto experimental estratificado 70/15/15 (semilla 42) que se genera durante la preparación de datos y que no tiene duplicados entre conjuntos:
+Para el modelado se utiliza un reparto experimental estratificado que divide el `train` original (5.216 imágenes) en aproximadamente 80% `train` y 20% `validation` (semilla 42, sin duplicados por contenido entre conjuntos). El `test` original de 624 imágenes permanece intacto y las 16 imágenes del `val` original no se utilizan:
 
-- `data/interim/stratified_split_70_15_15.csv`;
-- train: 4.099 imágenes (1.108 NORMAL, 2.991 PNEUMONIA);
-- validation: 879 imágenes (238 NORMAL, 641 PNEUMONIA);
-- test: 878 imágenes (237 NORMAL, 641 PNEUMONIA).
+- Manifiesto: `data/interim/stratified_split_train80_val20_test_original.csv`;
+- train: 4.173 imágenes (1.073 NORMAL, 3.100 PNEUMONIA);
+- validation: 1.043 imágenes (268 NORMAL, 775 PNEUMONIA);
+- test: 624 imágenes (234 NORMAL, 390 PNEUMONIA), íntegro del dataset crudo.
 
 ## 8. Flujo rápido con la CLI `neumonia`
 
@@ -90,7 +90,7 @@ Los comandos disponibles son:
 
 ```powershell
 neumonia eda        # Análisis exploratorio de datos (sección 9)
-neumonia prepare    # Preparación de datos: manifiesto 70/15/15 y verificación de pipelines (sección 10)
+neumonia prepare    # Preparación de datos: manifiesto 80/20 (train original) y verificación de pipelines (sección 10)
 neumonia augment    # Figura de ejemplos de augmentación (sección 11.1)
 neumonia train      # Entrenar VGG16, ResNet50 y MobileNetV2; evaluar, comparar y seleccionar (sección 11)
 neumonia evaluate   # Mostrar los resultados guardados sin volver a entrenar (sección 14)
@@ -147,19 +147,19 @@ El comando valida la estructura, inspecciona las imágenes y genera figuras en `
 
 ## 10. Ejecutar la preparación
 
-La preparación genera primero el manifiesto estratificado 70/15/15 (semilla 42, sin duplicados por contenido entre conjuntos) mediante `crear_manifiesto_division_estratificada`:
+La preparación genera el manifiesto experimental (80% train / 20% validation del train original; test original de 624 intacto; semilla 42; sin duplicados por contenido entre conjuntos) mediante `crear_manifiesto_division_estratificada`:
 
 ```powershell
-.\.venv\Scripts\python.exe -c "from pathlib import Path; from src.utils.paths import DIRECTORIO_DATOS, RAIZ_PROYECTO; from src.data.splitting import crear_manifiesto_division_estratificada; p=RAIZ_PROYECTO/'data'/'interim'/'stratified_split_70_15_15.csv'; r=crear_manifiesto_division_estratificada(DIRECTORIO_DATOS, p, random_state=42); print(r.groupby('split').size().to_dict())"
+.\.venv\Scripts\python.exe -c "from src.data.splitting import crear_manifiesto_division_estratificada; r=crear_manifiesto_division_estratificada('data/raw/chest_xray', 'data/interim/stratified_split_train80_val20_test_original.csv', random_state=42); print(r.groupby('split').size().to_dict())"
 ```
 
 Después se construyen los datasets TensorFlow sobre ese reparto con `construir_pipelines_datos`:
 
 ```powershell
-.\.venv\Scripts\python.exe -c "from src.data.datasets import construir_pipelines_datos; d=construir_pipelines_datos('data/raw/chest_xray', image_size=(224,224), batch_size=16, manifiesto_division='data/interim/stratified_split_70_15_15.csv'); print({k: v for k, v in d.items()})"
+.\.venv\Scripts\python.exe -c "from src.data.datasets import construir_pipelines_datos; d=construir_pipelines_datos('data/raw/chest_xray', image_size=(224,224), batch_size=16, manifiesto_division='data/interim/stratified_split_train80_val20_test_original.csv'); print({k: v for k, v in d.items()})"
 ```
 
-El pipeline carga imágenes RGB, las redimensiona a `224 x 224`, normaliza a `[0, 1]`, asigna las etiquetas binarias y crea datasets TensorFlow para `train` (4.099), `validation` (879) y `test` (878).
+El pipeline carga imágenes RGB, las redimensiona a `224 x 224`, normaliza a `[0, 1]`, asigna las etiquetas binarias y crea datasets TensorFlow para `train` (4.173), `validation` (1.043) y `test` (624).
 
 ## 11. Entrenar los tres modelos
 
@@ -171,7 +171,7 @@ El entry point real del entrenamiento es:
 
 Este comando sí vuelve a entrenar VGG16, ResNet50 y MobileNetV2. Produce los checkpoints, las curvas, las matrices y `models/model_results.json`. No debe ejecutarse para una simple consulta de resultados ya existentes.
 
-Los tres modelos se entrenan sobre el subconjunto `train` del reparto 70/15/15 (4.099 imágenes) y se validan sobre `validation` (879 imágenes).
+Los tres modelos se entrenan sobre el subconjunto `train` del reparto experimental (4.173 imágenes) y se validan sobre `validation` (1.043 imágenes). El `test` original (624 imágenes) no participa en entrenamiento ni en selección; solo se evalúa el modelo ganador al final.
 
 ### 11.1 Generar la figura de ejemplos de augmentación
 
@@ -181,11 +181,11 @@ Para visualizar el efecto de la augmentation sobre una imagen real del `train` (
 .\.venv\Scripts\python.exe -m src.visualization.visualize
 ```
 
-Genera `reports/figures/data_augmentation_examples.png`, una figura de 3x3 con la imagen original y variantes obtenidas únicamente con `RandomFlip("horizontal")`, `RandomRotation(0.05)` y `RandomZoom(0.05)`, incluyendo sus combinaciones.
+Genera `reports/figures/data_augmentation_examples.png`, una figura de 2x2 con la imagen original y variantes obtenidas únicamente con `RandomRotation(0.05)` y `RandomZoom(0.05)`. El volteo horizontal fue eliminado del pipeline porque en radiografías de tórax puede existir información de lateralidad anatómica (marcadores L/R) que un volteo horizontal podría invertir artificialmente.
 
 ## 12. Evaluación
 
-La evaluación está integrada en el comando anterior. Cada modelo se evalúa primero sobre el subconjunto `validation` (879 imágenes), se aplica umbral 0.5 sobre las probabilidades y se calculan métricas. Se generan:
+La evaluación está integrada en el comando anterior. Cada modelo se evalúa primero sobre el subconjunto `validation` (1.043 imágenes), se aplica umbral 0.5 sobre las probabilidades y se calculan métricas. Se generan:
 
 - `reports/figures/confusion_matrix_validation_vgg16.png`;
 - `reports/figures/confusion_matrix_validation_resnet50.png`;
@@ -194,12 +194,12 @@ La evaluación está integrada en el comando anterior. Cada modelo se evalúa pr
 - `reports/figures/roc_curve_validation_resnet50.png`;
 - `reports/figures/roc_curve_validation_mobilenetv2.png`.
 
-El conjunto `test` (878 imágenes) queda reservado y solo se evalúa el modelo ganador al final, lo que genera:
+El conjunto `test` original (624 imágenes) queda reservado íntegro y solo se evalúa el modelo ganador al final, lo que genera:
 
-- `reports/figures/confusion_matrix_test_mobilenetv2.png`;
-- `reports/figures/roc_curve_test_mobilenetv2.png`.
+- `reports/figures/confusion_matrix_test_<modelo_ganador>.png`;
+- `reports/figures/roc_curve_test_<modelo_ganador>.png`.
 
-## 13. Comparación
+## 13. Comparación y criterio de éxito
 
 La comparación también está integrada en `run_real_training.py` y se realiza únicamente sobre las métricas de `validation`; el conjunto `test` no participa en la selección. El código utiliza este orden:
 
@@ -208,7 +208,12 @@ La comparación también está integrada en `run_real_training.py` y se realiza 
 3. F1;
 4. Accuracy.
 
-El resultado se persiste en `models/model_results.json`.
+Sobre el `test` original se calcula además:
+
+- `baseline_test`: baseline de clase mayoritaria (predecir siempre `PNEUMONIA`).
+- `criterio_exito`: el modelo ganador debe superar al baseline en Balanced Accuracy y mostrar sensibilidad y especificidad por encima del nivel de azar (0.5), lo que indica un equilibrio adecuado entre ambas clases.
+
+Todo se persiste en `models/model_results.json`.
 
 ## 14. Consultar el modelo seleccionado
 
@@ -218,10 +223,12 @@ Para consultar el ganador guardado sin entrenar:
 $result = Get-Content -Raw models/model_results.json | ConvertFrom-Json
 $result.validation_comparison.winner.model_name
 $result.validation_comparison.results | Format-Table model_name, balanced_accuracy, accuracy, recall, specificity, f1, roc_auc
+$result.baseline_test | Format-List
+$result.criterio_exito | Format-List
 $result.final_test | Format-List model_name, accuracy, balanced_accuracy, precision, recall, specificity, f1, roc_auc
 ```
 
-El resultado actual selecciona `MobileNetV2` (a partir de las métricas de `validation`). El bloque `final_test` contiene las métricas del ganador sobre `test`, única evaluación realizada sobre ese conjunto.
+El bloque `validation_comparison.winner` es el modelo seleccionado únicamente con métricas de `validation`. El bloque `final_test` contiene las métricas del ganador sobre el `test` original de 624 imágenes, única evaluación realizada sobre ese conjunto.
 
 ## 15. Ejecutar los tests
 
@@ -229,13 +236,13 @@ El resultado actual selecciona `MobileNetV2` (a partir de las métricas de `vali
 .\.venv\Scripts\python.exe -m pytest
 ```
 
-La suite actual contiene 23 pruebas.
+La suite actual contiene 34 pruebas. Incluye verificaciones de la nueva división: el test original intacto, la estratificación, la ausencia de duplicados por hash entre conjuntos, la no mezcla del test con train/validation y la ausencia de `RandomFlip("horizontal")` en la augmentation.
 
 ## 16. Ubicación de artefactos
 
 - Modelos: `models/vgg16/best_model.keras`, `models/resnet50/best_model.keras` y `models/mobilenetv2/best_model.keras`.
 - Resultados: `models/model_results.json`.
-- Manifiesto del reparto experimental: `data/interim/stratified_split_70_15_15.csv`.
+- Manifiesto del reparto experimental: `data/interim/stratified_split_train80_val20_test_original.csv`.
 - Figuras EDA, evaluación y augmentación: `reports/figures/`.
 - Código de datos: `src/data/`.
 - Código de modelos: `src/models/`.

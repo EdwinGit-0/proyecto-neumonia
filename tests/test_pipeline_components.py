@@ -13,7 +13,13 @@ from src.data.preprocessing import (
     redimensionar_imagen,
 )
 from src.models.architectures import NOMBRES_MODELOS, construir_modelo_transferencia
-from src.models.evaluation import calcular_matriz_confusion, calcular_reporte_metricas, seleccionar_mejor_modelo
+from src.models.evaluation import (
+    calcular_matriz_confusion,
+    calcular_reporte_metricas,
+    evaluar_baseline_mayoritaria,
+    evaluar_criterio_exito,
+    seleccionar_mejor_modelo,
+)
 from src.data.splitting import crear_manifiesto_division_estratificada
 
 
@@ -156,18 +162,190 @@ def test_seleccionar_mejor_modelo_rechaza_resultados_vacios() -> None:
         seleccionar_mejor_modelo([])
 
 
+def _crear_estructura_prueba(data_dir: Path) -> None:
+    """Crear una estructura cruda con train original y test original (sin val original)."""
+    for label in ["NORMAL", "PNEUMONIA"]:
+        train_folder = data_dir / "train" / label
+        train_folder.mkdir(parents=True, exist_ok=True)
+        for index in range(10):
+            color = (index, 20 if label == "NORMAL" else 40, 30)
+            Image.new("RGB", (16, 16), color=color).save(train_folder / f"train_{label}_{index}.png")
+        test_folder = data_dir / "test" / label
+        test_folder.mkdir(parents=True, exist_ok=True)
+        for index in range(4):
+            color = (index, 60 if label == "NORMAL" else 80, 90)
+            Image.new("RGB", (16, 16), color=color).save(test_folder / f"test_{label}_{index}.png")
+
+
 def test_crear_manifiesto_division_estratificada_es_reproducible_y_sin_solapamiento(tmp_path: Path) -> None:
     data_dir = tmp_path / "chest_xray"
-    for label in ["NORMAL", "PNEUMONIA"]:
-        folder = data_dir / "train" / label
-        folder.mkdir(parents=True, exist_ok=True)
-        for index in range(10):
-            image = Image.new("RGB", (16, 16), color=(index, 20 if label == "NORMAL" else 40, 30))
-            image.save(folder / f"{label}_{index}.png")
+    _crear_estructura_prueba(data_dir)
 
     first = crear_manifiesto_division_estratificada(data_dir, tmp_path / "first.csv", random_state=42)
     second = crear_manifiesto_division_estratificada(data_dir, tmp_path / "second.csv", random_state=42)
 
     assert first[["path", "split"]].equals(second[["path", "split"]])
-    assert first.groupby("split")["label"].count().sum() == 20
+    assert first.groupby("split")["label"].count().sum() == 28
     assert set(first["split"]) == {"train", "val", "test"}
+
+
+def test_manifiesto_preserva_test_original_completo(tmp_path: Path) -> None:
+    data_dir = tmp_path / "chest_xray"
+    _crear_estructura_prueba(data_dir)
+
+    manifest = crear_manifiesto_division_estratificada(data_dir, tmp_path / "split.csv", random_state=42)
+    test_records = manifest[manifest["split"] == "test"]
+    assert len(test_records) == 8
+    assert set(test_records["path"]).issubset(
+        {str(path) for path in (data_dir / "test").rglob("*.png")}
+    )
+
+
+def test_manifiesto_train_y_validation_provienen_solo_del_train_original(tmp_path: Path) -> None:
+    data_dir = tmp_path / "chest_xray"
+    _crear_estructura_prueba(data_dir)
+
+    manifest = crear_manifiesto_division_estratificada(data_dir, tmp_path / "split.csv", random_state=42)
+    experimental = manifest[manifest["split"].isin(["train", "val"])]
+    train_originals = {str(path) for path in (data_dir / "train").rglob("*.png")}
+    assert set(experimental["path"]).issubset(train_originals)
+    assert len(experimental) == 20
+
+
+def test_manifiesto_no_reparte_imagenes_test_en_entrenamiento_ni_validacion(tmp_path: Path) -> None:
+    data_dir = tmp_path / "chest_xray"
+    _crear_estructura_prueba(data_dir)
+
+    manifest = crear_manifiesto_division_estratificada(data_dir, tmp_path / "split.csv", random_state=42)
+    test_paths = set(manifest[manifest["split"] == "test"]["path"])
+    train_paths = set(manifest[manifest["split"] == "train"]["path"])
+    val_paths = set(manifest[manifest["split"] == "val"]["path"])
+    assert test_paths.isdisjoint(train_paths)
+    assert test_paths.isdisjoint(val_paths)
+
+
+def test_manifiesto_division_es_estratificada_por_clase(tmp_path: Path) -> None:
+    data_dir = tmp_path / "chest_xray"
+    _crear_estructura_prueba(data_dir)
+
+    manifest = crear_manifiesto_division_estratificada(data_dir, tmp_path / "split.csv", random_state=42)
+    for label in ["NORMAL", "PNEUMONIA"]:
+        label_records = manifest[manifest["label"] == label]
+        train_count = int((label_records["split"] == "train").sum())
+        val_count = int((label_records["split"] == "val").sum())
+        total = train_count + val_count
+        assert total == 10
+        assert 0.15 <= val_count / total <= 0.25
+
+
+def test_manifiesto_no_separa_duplicados_por_hash_entre_train_y_validation(tmp_path: Path) -> None:
+    data_dir = tmp_path / "chest_xray"
+    for label in ["NORMAL", "PNEUMONIA"]:
+        folder = data_dir / "train" / label
+        folder.mkdir(parents=True, exist_ok=True)
+        for index in range(6):
+            Image.new("RGB", (16, 16), color=(index, 20, 30)).save(folder / f"{label}_{index}.png")
+    data_dir.mkdir(parents=True, exist_ok=True)
+    (data_dir / "test").mkdir(parents=True, exist_ok=True)
+
+    duplicado = data_dir / "train" / "NORMAL" / "copia.png"
+    duplicado.write_bytes((data_dir / "train" / "NORMAL" / "NORMAL_0.png").read_bytes())
+    (data_dir / "test" / "NORMAL").mkdir(parents=True, exist_ok=True)
+
+    manifest = crear_manifiesto_division_estratificada(data_dir, tmp_path / "split.csv", random_state=42)
+    split_por_ruta = manifest.set_index("path")["split"].to_dict()
+    splits_duplicado = {
+        split_por_ruta[str(data_dir / "train" / "NORMAL" / "NORMAL_0.png")],
+        split_por_ruta[str(data_dir / "train" / "NORMAL" / "copia.png")],
+    }
+    assert len(splits_duplicado & {"train", "val"}) == 1
+
+
+def test_manifiesto_ignora_val_original_del_dataset_crudo(tmp_path: Path) -> None:
+    data_dir = tmp_path / "chest_xray"
+    _crear_estructura_prueba(data_dir)
+    (data_dir / "val" / "NORMAL").mkdir(parents=True, exist_ok=True)
+    Image.new("RGB", (16, 16), color=(5, 5, 5)).save(data_dir / "val" / "NORMAL" / "val_normal.png")
+
+    manifest = crear_manifiesto_division_estratificada(data_dir, tmp_path / "split.csv", random_state=42)
+    all_paths = {str(Path(p)) for p in manifest["path"]}
+    assert not any("\\val\\" in p or "/val/" in p for p in all_paths)
+
+
+def test_baseline_mayoritaria_mide_clase_mayoritaria(tmp_path: Path) -> None:
+    y_true = np.array([1, 1, 1, 0, 0])
+    baseline = evaluar_baseline_mayoritaria(y_true)
+    assert baseline["majority_class"] == "PNEUMONIA"
+    assert baseline["balanced_accuracy"] == 0.5
+    assert baseline["recall"] == 1.0
+    assert baseline["specificity"] == 0.0
+
+
+def test_criterio_exito_requiere_superar_baseline_y_equilibrio(tmp_path: Path) -> None:
+    baseline = {"balanced_accuracy": 0.5}
+    mete = {
+        "balanced_accuracy": 0.90,
+        "recall": 0.95,
+        "specificity": 0.85,
+    }
+    resultado = evaluar_criterio_exito(mete, baseline)
+    assert resultado["cumple"] is True
+
+    sesgado = {
+        "balanced_accuracy": 0.55,
+        "recall": 1.0,
+        "specificity": 0.10,
+    }
+    resultado_sesgado = evaluar_criterio_exito(sesgado, baseline)
+    assert resultado_sesgado["cumple"] is False
+    assert resultado_sesgado["equilibrio_adecuado"] is False
+
+
+def test_capas_augmentation_no_incluyen_flip_horizontal() -> None:
+    import tensorflow as tf
+
+    from src.training.run_real_training import crear_capas_augmentation
+
+    layers = crear_capas_augmentation()
+    assert not any(isinstance(layer, tf.keras.layers.RandomFlip) for layer in layers)
+
+
+def test_capas_augmentation_incluyen_rotacion_y_zoom() -> None:
+    import tensorflow as tf
+
+    from src.training.run_real_training import crear_capas_augmentation
+
+    layers = crear_capas_augmentation()
+    assert any(isinstance(layer, tf.keras.layers.RandomRotation) for layer in layers)
+    assert any(isinstance(layer, tf.keras.layers.RandomZoom) for layer in layers)
+
+
+def test_capas_augmentation_rotacion_y_zoom_usados_en_entrenamiento_solo(tmp_path: Path) -> None:
+    """La pipeline de datos no incorpora augmentación; esta se aplica solo al train."""
+    import tensorflow as tf
+
+    from src.data.datasets import construir_pipelines_datos
+    from src.data.splitting import cargar_manifiesto_division
+    from src.training.run_real_training import construir_pipeline_augmentation
+
+    data_dir = tmp_path / "chest_xray"
+    _crear_estructura_prueba(data_dir)
+    manifest_path = tmp_path / "split.csv"
+    crear_manifiesto_division_estratificada(data_dir, manifest_path, random_state=42)
+
+    manifiesto = cargar_manifiesto_division(manifest_path)
+    assert set(manifiesto["split"]) == {"train", "val", "test"}
+
+    datasets = construir_pipelines_datos(
+        data_dir,
+        image_size=(16, 16),
+        batch_size=4,
+        manifiesto_division=manifest_path,
+    )
+    assert isinstance(datasets["train"], tf.data.Dataset)
+    assert isinstance(datasets["val"], tf.data.Dataset)
+    assert isinstance(datasets["test"], tf.data.Dataset)
+
+    augmented = construir_pipeline_augmentation(datasets["train"])
+    assert isinstance(augmented, tf.data.Dataset)
+    assert augmented.element_spec == datasets["train"].element_spec

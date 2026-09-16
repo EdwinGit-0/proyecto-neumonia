@@ -1,4 +1,11 @@
-"""División estratificada reproducible para el dataset de radiografías de tórax."""
+"""División estratificada reproducible para el dataset de radiografías de tórax.
+
+Estrategia de división:
+- El train original (5.216 imágenes) se divide en 80% train y 20% validation.
+- El test original (624 imágenes) permanece completamente intacto.
+- Las 16 imágenes del val original del dataset crudo no se utilizan.
+- Agrupación por hash SHA-256 para evitar duplicados entre train y validation.
+"""
 
 from __future__ import annotations
 
@@ -13,7 +20,7 @@ from src.data.preprocessing import construir_dataframe_dataset
 
 
 NOMBRES_DIVISION_POR_DEFECTO = ("train", "val", "test")
-RATIOS_POR_DEFECTO = (0.70, 0.15, 0.15)
+RATIOS_POR_DEFECTO = (0.80, 0.20)
 
 
 def _hash_archivo(path: str | Path) -> str:
@@ -42,7 +49,7 @@ def _asignar_conteos_grupos(group_sizes: Iterable[int], targets: list[int], rng:
     return assigned
 
 
-def _calcular_objetivos_division(total: int, ratios: tuple[float, float, float]) -> list[int]:
+def _calcular_objetivos_division(total: int, ratios: tuple[float, float]) -> list[int]:
     """Calcular objetivos enteros de división cuya suma sea igual al total de la clase."""
     raw = np.asarray(ratios) * total
     targets = np.floor(raw).astype(int)
@@ -56,11 +63,16 @@ def crear_manifiesto_division_estratificada(
     directorio_dataset: str | Path,
     ruta_salida: str | Path,
     random_state: int = 42,
-    ratios: tuple[float, float, float] = RATIOS_POR_DEFECTO,
+    ratios: tuple[float, float] = RATIOS_POR_DEFECTO,
 ) -> pd.DataFrame:
-    """Crear un manifiesto 70/15/15 reproducible sin duplicados por hash entre conjuntos."""
-    if len(ratios) != 3 or not np.isclose(sum(ratios), 1.0):
-        raise ValueError("ratios debe contener tres valores que sumen 1.0")
+    """Crear un manifiesto estratificado 80/20 reproducible sin duplicados por hash.
+
+    El train original se divide en train (80%) y validation (20%).
+    El test original (624 imágenes) permanece intacto y no participa en la división.
+    Las 16 imágenes del val original del dataset crudo no se utilizan.
+    """
+    if len(ratios) != 2 or not np.isclose(sum(ratios), 1.0):
+        raise ValueError("ratios debe contener dos valores que sumen 1.0")
 
     dataframe = construir_dataframe_dataset(directorio_dataset).copy()
     if dataframe.empty:
@@ -69,17 +81,26 @@ def crear_manifiesto_division_estratificada(
     dataframe["content_hash"] = dataframe["path"].map(_hash_archivo)
     rng = np.random.default_rng(random_state)
     assignments: dict[str, str] = {}
-    split_names = list(NOMBRES_DIVISION_POR_DEFECTO)
 
-    for label, label_records in dataframe.groupby("label", sort=True):
+    df_train_original = dataframe[dataframe["split"] == "train"].copy()
+
+    for label, label_records in df_train_original.groupby("label", sort=True):
         groups = label_records.groupby("content_hash", sort=True).size()
         targets = _calcular_objetivos_division(len(label_records), ratios)
         group_assignments = _asignar_conteos_grupos(groups.tolist(), targets, rng)
         for content_hash, split_index in zip(groups.index, group_assignments):
-            assignments[str(content_hash)] = split_names[split_index]
+            split_name = NOMBRES_DIVISION_POR_DEFECTO[split_index]
+            assignments[str(content_hash)] = split_name
+
+    df_test_original = dataframe[dataframe["split"] == "test"].copy()
+    for content_hash in df_test_original["content_hash"].unique():
+        assignments[str(content_hash)] = "test"
 
     dataframe["split"] = dataframe["content_hash"].map(assignments)
     dataframe = dataframe.drop(columns=["content_hash"])
+
+    dataframe = dataframe[dataframe["split"].isin(["train", "val", "test"])].copy()
+
     output = Path(ruta_salida)
     output.parent.mkdir(parents=True, exist_ok=True)
     dataframe.to_csv(output, index=False)

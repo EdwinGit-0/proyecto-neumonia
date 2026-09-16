@@ -27,7 +27,7 @@ import click
 from src.utils.paths import DIRECTORIO_DATOS, DIRECTORIO_MODELOS, RAIZ_PROYECTO
 
 SEMILLA = 42
-RUTA_MANIFIESTO = RAIZ_PROYECTO / "data" / "interim" / "stratified_split_70_15_15.csv"
+RUTA_MANIFIESTO = RAIZ_PROYECTO / "data" / "interim" / "stratified_split_train80_val20_test_original.csv"
 RUTA_RESULTADOS = DIRECTORIO_MODELOS / "model_results.json"
 COLUMNAS_METRICAS = [
     "model_name",
@@ -73,11 +73,11 @@ def eda() -> None:
 
 @cli.command()
 def prepare() -> None:
-    """Crear el manifiesto estratificado 70/15/15 y verificar los pipelines."""
+    """Crear el manifiesto estratificado 80/20 (train/validation) con test original intacto y verificar pipelines."""
     from src.data.datasets import construir_pipelines_datos
     from src.data.splitting import crear_manifiesto_division_estratificada
 
-    click.echo("Creando el manifiesto de división estratificada 70/15/15...")
+    click.echo("Creando el manifiesto de división estratificada (80% train / 20% validation, test original intacto)...")
     manifiesto = crear_manifiesto_division_estratificada(DIRECTORIO_DATOS, RUTA_MANIFIESTO, random_state=SEMILLA)
     click.echo(f"Manifiesto guardado en: {RUTA_MANIFIESTO}")
     for split_name in ["train", "val", "test"]:
@@ -138,7 +138,7 @@ def evaluate() -> None:
 
     resultado = json.loads(RUTA_RESULTADOS.read_text(encoding="utf-8"))
     click.echo(f"Manifiesto de división: {resultado['split_manifest']}")
-    click.echo(f"División: 70/15/15 con random_state={resultado['split_random_state']}")
+    click.echo(f"División: 80/20 con random_state={resultado['split_random_state']}")
 
     click.echo("\nDistribución del dataset:")
     distribucion = pd.DataFrame(resultado["split_distribution"]).T
@@ -151,7 +151,19 @@ def evaluate() -> None:
     ganador = resultado["validation_comparison"]["winner"]["model_name"]
     click.echo(f"\nModelo ganador (selección por validación): {ganador}")
 
-    click.echo("Resultados finales sobre test (solo el modelo ganador):")
+    click.echo("\nBaseline mayoritaria sobre test:")
+    baseline = resultado.get("baseline_test", {})
+    for clave, valor in baseline.items():
+        click.echo(f"  {clave}: {valor}")
+
+    click.echo("\nCriterio de éxito:")
+    criterio = resultado.get("criterio_exito", {})
+    click.echo(f"  ¿Cumple? {criterio.get('cumple')}")
+    click.echo(f"  Supera baseline: {criterio.get('supera_baseline')}")
+    click.echo(f"  Sensibilidad sobre azar: {criterio.get('sensibilidad_sobre_azar')}")
+    click.echo(f"  Especificidad sobre azar: {criterio.get('especificidad_sobre_azar')}")
+
+    click.echo("\nResultados finales sobre test (solo el modelo ganador):")
     tabla_test = pd.DataFrame([resultado["final_test"]])[COLUMNAS_METRICAS]
     click.echo(tabla_test.to_string(index=False))
     click.echo(f"Matriz de confusión en: {resultado['final_test']['confusion_plot']}")

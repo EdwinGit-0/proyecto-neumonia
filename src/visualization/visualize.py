@@ -17,7 +17,7 @@ from src.utils.paths import DIRECTORIO_DATOS, DIRECTORIO_FIGURAS, RAIZ_PROYECTO,
 
 
 TAMANO_IMAGEN = (224, 224)
-RUTA_MANIFIESTO = RAIZ_PROYECTO / "data" / "interim" / "stratified_split_70_15_15.csv"
+RUTA_MANIFIESTO = RAIZ_PROYECTO / "data" / "interim" / "stratified_split_train80_val20_test_original.csv"
 
 
 def _seleccionar_imagen_entrenamiento() -> Path | None:
@@ -45,23 +45,19 @@ def _aplicar_capa(image_array: np.ndarray, layer: tf.keras.layers.Layer) -> np.n
 def construir_variantes_augmentation(image_array: np.ndarray) -> list[tuple[str, np.ndarray]]:
     """Aplicar las transformaciones de augmentation existentes del proyecto a una sola imagen.
 
-    Solo se utilizan RandomFlip("horizontal"), RandomRotation(0.05) y RandomZoom(0.05),
-    reproduciendo exactamente el pipeline de entrenamiento.
+    Solo se utilizan RandomRotation(0.05) y RandomZoom(0.05), reproduciendo
+    exactamente el pipeline de entrenamiento. El volteo horizontal fue descartado
+    porque las radiografías de tórax pueden contener información de lateralidad
+    anatómica (marcadores L/R) que un volteo podría invertir artificialmente.
     """
-    flip = lambda: tf.keras.layers.RandomFlip("horizontal")
     rotation = lambda: tf.keras.layers.RandomRotation(0.05)
     zoom = lambda: tf.keras.layers.RandomZoom(0.05)
 
     variants = [
         ("Original", None),
-        ("Volteo horizontal", [flip()]),
         ("Rotación", [rotation()]),
         ("Zoom", [zoom()]),
-        ("Volteo + Rotación", [flip(), rotation()]),
-        ("Volteo + Zoom", [flip(), zoom()]),
         ("Rotación + Zoom", [rotation(), zoom()]),
-        ("Volteo + Rotación + Zoom", [flip(), rotation(), zoom()]),
-        ("Volteo + Rotación + Zoom (2.ª muestra)", [flip(), rotation(), zoom()]),
     ]
 
     generated: list[tuple[str, np.ndarray]] = []
@@ -72,13 +68,7 @@ def construir_variantes_augmentation(image_array: np.ndarray) -> list[tuple[str,
             continue
         array = original
         for layer in layers:
-            before = array
             array = _aplicar_capa(array, layer)
-            if isinstance(layer, tf.keras.layers.RandomFlip) and np.array_equal(array, before):
-                seed = 0
-                while np.array_equal(array, before) and seed < 64:
-                    array = _aplicar_capa(before, tf.keras.layers.RandomFlip("horizontal", seed=seed))
-                    seed += 1
         generated.append((label, array))
     return generated
 
@@ -86,7 +76,7 @@ def construir_variantes_augmentation(image_array: np.ndarray) -> list[tuple[str,
 def graficar_ejemplos_augmentation(
     ruta_salida: str | Path = DIRECTORIO_FIGURAS / "data_augmentation_examples.png",
 ) -> Path:
-    """Crear una figura de 3x3 que muestra la augmentation de datos sobre una imagen de entrenamiento."""
+    """Crear una figura 2x2 que muestra la augmentation de datos sobre una imagen de entrenamiento."""
     train_image = _seleccionar_imagen_entrenamiento()
     if train_image is None:
         raise FileNotFoundError("No se encontraron imágenes de entrenamiento para ilustrar la augmentation de datos.")
@@ -95,7 +85,7 @@ def graficar_ejemplos_augmentation(
     image_array = imagen_a_arreglo(source, TAMANO_IMAGEN)
     variants = construir_variantes_augmentation(image_array)
 
-    fig, axes = plt.subplots(3, 3, figsize=(9, 9))
+    fig, axes = plt.subplots(2, 2, figsize=(8, 8))
     fig.suptitle(
         "Data augmentation aplicada al conjunto de entrenamiento (imágenes de 224 x 224 px)",
         fontsize=13,

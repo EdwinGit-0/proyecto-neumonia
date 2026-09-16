@@ -12,10 +12,16 @@ Clasificación de imágenes de rayos X de tórax en las clases `NORMAL` y
 
 El EDA, la preparación de imágenes, el entrenamiento, la evaluación y la
 comparación de tres modelos fueron ejecutados sobre el dataset real. El modelo
-seleccionado actualmente es **MobileNetV2**, elegido únicamente con las métricas
-de `validation` del reparto experimental 70/15/15 (train 4.099, validation 879
-y test 878, sin duplicados entre conjuntos). El conjunto `test` quedó reservado
-y solo se utilizó para la evaluación final de MobileNetV2.
+seleccionado es **MobileNetV2**, elegido únicamente con las métricas de
+`validation` del reparto experimental (train 4.173 y validation 1.043, aprox.
+80%/20% del train original de 5.216). El conjunto `test` original (624 imágenes)
+permanece intacto, no participa en entrenamiento ni en selección y solo se
+utilizó para la evaluación final del modelo ganador.
+
+Sobre el test original, MobileNetV2 obtuvo Balanced Accuracy 0.7885, Recall
+0.9872, Specificity 0.5897 y ROC-AUC 0.9545, cumpliendo el criterio de éxito:
+supera al baseline de clase mayoritaria (Balanced Accuracy 0.5) y muestra
+sensibilidad y especificidad por encima del azar.
 
 Resultados guardados: `models/model_results.json`.
 
@@ -35,9 +41,11 @@ data/raw/chest_xray/
 ```
 
 La estructura anterior es la del dataset crudo. Para el modelado se utiliza la
-partición experimental estratificada 70/15/15 (semilla 42) registrada en
-`data/interim/stratified_split_70_15_15.csv`, sin duplicados entre los tres
-conjuntos.
+partición experimental estratificada 80/20 (semilla 42): el train original
+(5.216 imágenes) se divide en train y validation aproximadamente 80%/20%, y el
+test original (624 imágenes) permanece intacto. El manifiesto se registra en
+`data/interim/stratified_split_train80_val20_test_original.csv`, sin duplicados
+por contenido entre conjuntos.
 
 La configuración DVC usa un remoto Google Drive. El detalle técnico completo
 está en [references/documentacion_proyecto.md](references/documentacion_proyecto.md).
@@ -90,7 +98,7 @@ Tests:
 - `models/`: checkpoints y resultados.
 - `reports/figures/`: figuras EDA y evaluación.
 - `references/`: documentación técnica y guía de ejecución.
-- `tests/`: 23 pruebas automatizadas.
+- `tests/`: 34 pruebas automatizadas.
 
 El despliegue productivo y la validación clínica están fuera del alcance de
 este proyecto académico.

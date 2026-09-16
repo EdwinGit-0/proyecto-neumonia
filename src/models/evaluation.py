@@ -77,6 +77,59 @@ def seleccionar_mejor_modelo(results: list[dict[str, Any]]) -> dict[str, Any]:
     return max(results, key=sorting_key)
 
 
+def evaluar_baseline_mayoritaria(y_true: np.ndarray) -> dict[str, float | str]:
+    """Evaluar un baseline sencillo que siempre predice la clase mayoritaria.
+
+    Devolver sus métricas para comparar contra el modelo seleccionado.
+    """
+    true_labels = np.asarray(y_true).ravel().astype(int)
+    if true_labels.size == 0:
+        raise ValueError("y_true no debe estar vacío.")
+
+    majority_class = int(np.bincount(true_labels).argmax())
+    baseline_pred = np.full(true_labels.shape, majority_class)
+    metrics = calcular_reporte_metricas(true_labels, baseline_pred)
+    return {
+        "baseline": "clase mayoritaria",
+        "majority_class": "PNEUMONIA" if majority_class == 1 else "NORMAL",
+        "accuracy": float(metrics["accuracy"]),
+        "balanced_accuracy": float(metrics["balanced_accuracy"]),
+        "recall": float(metrics["recall"]),
+        "specificity": float(metrics["specificity"]),
+        "f1": float(metrics["f1"]),
+        "roc_auc": float(metrics["roc_auc"]),
+    }
+
+
+def evaluar_criterio_exito(metrics_test: dict[str, Any], metrics_baseline_test: dict[str, Any]) -> dict[str, Any]:
+    """Comprobar el criterio de éxito sobre el test original independiente.
+
+    El modelo seleccionado debe:
+    1. superar al baseline de clase mayoritaria en balanced_accuracy;
+    2. mostrar sensibilidad y especificidad por encima del nivel de azar (0.5),
+       es decir, un equilibrio adecuado entre ambas clases.
+    """
+    balanced_accuracy = float(metrics_test.get("balanced_accuracy", 0.0))
+    recall = float(metrics_test.get("recall", 0.0))
+    specificity = float(metrics_test.get("specificity", 0.0))
+    baseline_balanced_accuracy = float(metrics_baseline_test.get("balanced_accuracy", 0.0))
+
+    supera_baseline = balanced_accuracy > baseline_balanced_accuracy
+    sensibilidad_sobre_azar = recall > 0.5
+    especificidad_sobre_azar = specificity > 0.5
+    equilibrio_adecuado = sensibilidad_sobre_azar and especificidad_sobre_azar
+
+    return {
+        "cumple": bool(supera_baseline and equilibrio_adecuado),
+        "supera_baseline": bool(supera_baseline),
+        "sensibilidad_sobre_azar": bool(sensibilidad_sobre_azar),
+        "especificidad_sobre_azar": bool(especificidad_sobre_azar),
+        "equilibrio_adecuado": bool(equilibrio_adecuado),
+        "balanced_accuracy_modelo": balanced_accuracy,
+        "balanced_accuracy_baseline": baseline_balanced_accuracy,
+    }
+
+
 def comparar_resultados_modelos(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Ordenar la tabla de resultados para un reporte de comparación de modelos."""
     return sorted(

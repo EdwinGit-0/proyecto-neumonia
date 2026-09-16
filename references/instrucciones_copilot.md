@@ -236,14 +236,13 @@ chest_xray/
 
 La estructura anterior es la del dataset crudo (`data/raw/chest_xray/`, 5,856 imágenes en total).
 
-El reparto experimental actual para el modelado es 70/15/15 (semilla 42), generado en la preparación de datos y registrado en `data/interim/stratified_split_70_15_15.csv`, sin duplicados entre los tres conjuntos:
+El reparto experimental actual para el modelado divide el train original (5.216 imágenes) en train y validation aproximadamente 80%/20% (semilla 42), generado en la preparación de datos y registrado en `data/interim/stratified_split_train80_val20_test_original.csv`. El test original de 624 imágenes permanece intacto y no participa en entrenamiento ni en selección:
 
-| Conjunto   | NORMAL | PNEUMONIA | Total |
-| ---------- | -----: | --------: | ----: |
-| Train      |  1,108 |     2,991 | 4,099 |
-| Validation |    238 |       641 |   879 |
-| Test       |    237 |       641 |   878 |
-| Total      |  1,583 |     4,273 | 5,856 |
+| Conjunto   | Origen | Total |
+| ---------- | ------ | ----: |
+| Train      | 80% aprox. del train original | ~4.173 |
+| Validation | 20% aprox. del train original | ~1.043 |
+| Test       | test original íntegro | 624 |
 
 Verifica estos datos mediante código en lugar de asumirlos ciegamente.
 

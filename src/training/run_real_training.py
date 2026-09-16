@@ -19,7 +19,12 @@ from src.data.datasets import construir_pipelines_datos
 from src.data.splitting import crear_manifiesto_division_estratificada
 from src.models.architectures import construir_modelo_transferencia
 from src.models.comparison import resumir_comparacion_modelos
-from src.models.evaluation import calcular_matriz_confusion, calcular_reporte_metricas
+from src.models.evaluation import (
+    calcular_matriz_confusion,
+    calcular_reporte_metricas,
+    evaluar_baseline_mayoritaria,
+    evaluar_criterio_exito,
+)
 from src.utils.paths import DIRECTORIO_DATOS, DIRECTORIO_FIGURAS, DIRECTORIO_MODELOS, RAIZ_PROYECTO, asegurar_directorio
 
 
@@ -35,15 +40,22 @@ def configurar_ejecucion() -> None:
     tf.config.experimental.set_memory_growth(tf.config.list_physical_devices("GPU")[0], True) if tf.config.list_physical_devices("GPU") else None
 
 
+def crear_capas_augmentation() -> list:
+    """Devolver las capas de data augmentation usadas en el entrenamiento.
+
+    Se descarta el volteo horizontal porque las radiografías de tórax pueden
+    contener información de lateralidad anatómica y marcadores L/R; un volteo
+    horizontal podría invertir artificialmente esa información.
+    """
+    return [
+        tf.keras.layers.RandomRotation(0.05),
+        tf.keras.layers.RandomZoom(0.05),
+    ]
+
+
 def construir_pipeline_augmentation(train_dataset: tf.data.Dataset) -> tf.data.Dataset:
     """Aplicar augmentation ligera únicamente al conjunto de entrenamiento."""
-    augmentation = tf.keras.Sequential(
-        [
-            tf.keras.layers.RandomFlip("horizontal"),
-            tf.keras.layers.RandomRotation(0.05),
-            tf.keras.layers.RandomZoom(0.05),
-        ]
-    )
+    augmentation = tf.keras.Sequential(crear_capas_augmentation())
 
     def augment_examples(features: tf.Tensor, labels: tf.Tensor) -> tuple[tf.Tensor, tf.Tensor]:
         return augmentation(features, training=True), labels
@@ -133,7 +145,7 @@ def entrenar_y_evaluar_modelos() -> dict[str, Any]:
     asegurar_directorio(DIRECTORIO_FIGURAS)
     configurar_ejecucion()
 
-    ruta_manifiesto = RAIZ_PROYECTO / "data" / "interim" / "stratified_split_70_15_15.csv"
+    ruta_manifiesto = RAIZ_PROYECTO / "data" / "interim" / "stratified_split_train80_val20_test_original.csv"
     manifiesto_division = crear_manifiesto_division_estratificada(DIRECTORIO_DATOS, ruta_manifiesto, random_state=SEMILLA)
     datasets = construir_pipelines_datos(
         DIRECTORIO_DATOS,
@@ -201,10 +213,15 @@ def entrenar_y_evaluar_modelos() -> dict[str, Any]:
     winner_model_path = Path(model_artifacts[winner_name]["model_path"])
     winner_model = tf.keras.models.load_model(winner_model_path)
     final_test = evaluar_modelo(winner_model, test_dataset, winner_name, "test")
+
+    baseline_test = evaluar_baseline_mayoritaria(np.asarray(final_test["y_true"]))
+    criterio_exito = evaluar_criterio_exito(final_test, baseline_test)
+
     results_payload = {
         "split_manifest": str(ruta_manifiesto),
         "split_random_state": SEMILLA,
-        "split_ratios": {"train": 0.70, "val": 0.15, "test": 0.15},
+        "split_ratios": {"train": 0.80, "val": 0.20},
+        "test_original": {"total": 624, "intacto": True, "descripcion": "El test original del dataset crudo no participa en entrenamiento ni en seleccion de modelos."},
         "split_distribution": {
             split_name: {
                 "total": int((manifiesto_division["split"] == split_name).sum()),
@@ -215,6 +232,8 @@ def entrenar_y_evaluar_modelos() -> dict[str, Any]:
         },
         "models": model_artifacts,
         "validation_comparison": summary,
+        "baseline_test": baseline_test,
+        "criterio_exito": criterio_exito,
         "final_test": final_test,
     }
 
