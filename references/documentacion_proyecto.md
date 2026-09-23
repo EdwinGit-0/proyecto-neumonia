@@ -6,9 +6,9 @@
 
 **Problema:** clasificar radiografías de tórax en las clases `NORMAL` y `PNEUMONIA` mediante modelos convolucionales con transferencia de aprendizaje.
 
-**Objetivo:** entrenar, evaluar y comparar VGG16, ResNet50 y MobileNetV2 con una configuración comparable, y seleccionar el mejor modelo sobre el conjunto de validación con una regla reproducible.
+**Objetivo:** entrenar, evaluar y comparar VGG16, ResNet50 y MobileNetV2 con una configuración comparable, seleccionar el mejor modelo sobre el conjunto de validación con una regla reproducible y, posteriormente, mejorar el modelo seleccionado mediante tuning de hiperparámetros y tratamiento del desbalance de clases.
 
-**Alcance:** análisis exploratorio, preparación de imágenes, entrenamiento experimental, evaluación y comparación de tres arquitecturas. El resultado es académico y experimental.
+**Alcance:** análisis exploratorio, preparación de imágenes, entrenamiento experimental, evaluación y comparación de tres arquitecturas, ajuste de hiperparámetros de MobileNetV2 y experimentos de desbalance (class weights y oversampling) para obtener el modelo final. El resultado es académico y experimental.
 
 **Limitaciones:** no es un sistema clínico ni una herramienta de diagnóstico; no existe validación clínica externa; el dataset está desbalanceado; no se realiza calibración ni despliegue productivo.
 
@@ -68,13 +68,16 @@ proyecto-neumonia/
 │   ├── vgg16/best_model.keras
 │   ├── resnet50/best_model.keras
 │   ├── mobilenetv2/best_model.keras
-│   └── model_results.json
+│   ├── mobilenetv2_ajustado/best_model.keras
+│   ├── mobilenetv2_desbalance_oversampling/best_model.keras
+│   ├── model_results.json
+│   ├── mobilenetv2_tuning_results.json
+│   └── mobilenetv2_desbalance_results.json
 ├── notebooks/
 │   └── 01_comprension_datos_eda.ipynb
 ├── references/
 │   ├── documentacion_proyecto.md
-│   ├── guia_ejecucion.md
-│   └── instrucciones_copilot.md
+│   └── guia_ejecucion.md
 ├── reports/figures/
 ├── src/
 │   ├── cli.py
@@ -92,7 +95,9 @@ proyecto-neumonia/
 │   │   └── predict_model.py
 │   ├── training/
 │   │   ├── training.py
-│   │   └── run_real_training.py
+│   │   ├── run_real_training.py
+│   │   ├── tuning_mobilenetv2.py
+│   │   └── tuning_desbalance_clases.py
 │   ├── utils/paths.py
 │   └── visualization/visualize.py
 ├── tests/
@@ -104,7 +109,7 @@ proyecto-neumonia/
 └── tox.ini
 ```
 
-`build_features.py`, `train_model.py` y `predict_model.py` existen pero están vacíos y no son entry points del flujo ejecutado. El entrenamiento real se invoca a través de la CLI (`neumonia train`), que llama a `entrenar_y_evaluar_modelos` en `src/training/run_real_training.py`.
+`build_features.py`, `train_model.py` y `predict_model.py` existen pero están vacíos y no son entry points del flujo ejecutado. El entrenamiento real se invoca a través de la CLI (`neumonia train`), que llama a `entrenar_y_evaluar_modelos` en `src/training/run_real_training.py`. El tuning de MobileNetV2 y los experimentos de desbalance se reproducen con `neumonia tune` y `neumonia desbalance` (respectivamente `tuning_mobilenetv2.py` y `tuning_desbalance_clases.py`).
 
 ## 5. CLI
 
@@ -116,9 +121,13 @@ La forma recomendada de ejecutar el flujo es la interfaz de línea de comandos `
 | `neumonia prepare` | Genera el manifiesto estratificado (80% train / 20% validation del train original, test original intacto) y verifica los pipelines. |
 | `neumonia augment` | Genera la figura de ejemplos de augmentación. |
 | `neumonia train` | Entrena VGG16, ResNet50 y MobileNetV2; evalúa, compara y selecciona. |
+| `neumonia tune` | Reproduce el tuning de MobileNetV2 (learning rate, dropout y fine-tuning) y selecciona la mejor configuración sobre validation. |
+| `neumonia desbalance` | Reproduce los experimentos de desbalance (class weights y oversampling) sobre el ajustado `lr=3e-4` y selecciona la variante final sobre validation. |
 | `neumonia evaluate` | Muestra los resultados guardados sin volver a entrenar. |
 | `neumonia test` | Ejecuta la suite de pruebas con pytest. |
-| `neumonia run` | Ejecuta el flujo completo: EDA, preparación, augmentación, entrenamiento, evaluación y tests. |
+| `neumonia run` | Ejecuta la secuencia del flujo base: EDA, preparación, augmentación, entrenamiento, evaluación y tests. **No** incluye `tune` ni `desbalance`, que son etapas de mejora opcionales. |
+
+`neumonia tune` y `neumonia desbalance` no forman parte del flujo base (`run`) porque son etapas de mejora posteriores a la selección inicial del modelo; se ejecutan de forma independiente y solo usan `train`/`validation` para decidir.
 
 ## 6. Preparación de datos y augmentación
 
@@ -128,7 +137,7 @@ El preprocesamiento (`src/data/preprocessing.py`) carga cada imagen con Pillow y
 
 `src/data/datasets.py` construye los `tf.data.Dataset` con tensores `224 x 224 x 3`, mezcla los ejemplos, agrupa en batches y usa `prefetch` automático. La data augmentation se aplica únicamente sobre `train` con `RandomRotation(0.05)` y `RandomZoom(0.05)`; `validation` y `test` no reciben augmentation.
 
-El volteo horizontal (`RandomFlip("horizontal")`) fue eliminado: en radiografías de tórax puede existir información de lateralidad anatómica y marcadores L/R, y un volteo horizontal podría invertir artificialmente esa información. No se implementó oversampling, undersampling ni class weights porque el docente no lo solicitó; el desbalance se reporta mediante métricas balanceadas. La figura de ejemplos se genera con `graficar_ejemplos_augmentation` (`src/visualization/visualize.py`) en `reports/figures/data_augmentation_examples.png`.
+El volteo horizontal (`RandomFlip("horizontal")`) fue eliminado: en radiografías de tórax puede existir información de lateralidad anatómica y marcadores L/R, y un volteo horizontal podría invertir artificialmente esa información. El flujo base no aplica oversampling, undersampling ni class weights; el desbalance se reporta mediante métricas balanceadas. En la fase de mejora (sección 8.2) sí se probaron **class weights** y **oversampling** sobre `train` para el modelo final, siempre sin tocar `validation` ni `test`. La figura de ejemplos se genera con `graficar_ejemplos_augmentation` (`src/visualization/visualize.py`) en `reports/figures/data_augmentation_examples.png`.
 
 ## 7. Configuración experimental de los modelos
 
@@ -149,6 +158,8 @@ Dense(1, activation="sigmoid")
 - `ModelCheckpoint` monitorizando `val_loss` (guarda solo el mejor modelo).
 - `EarlyStopping` con paciencia 3 y restauración de mejores pesos.
 - `ReduceLROnPlateau` con factor 0.5, paciencia 2 y learning rate mínimo `1e-6`.
+
+Esta sección describe la configuración base compartida por los tres modelos. El **modelo final** (MobileNetV2 + oversampling) conserva el mismo esquema de capas y callbacks, pero usa **learning rate `3e-4`** (sección 8.2).
 
 ## 8. Entrenamiento, evaluación y selección
 
@@ -171,6 +182,32 @@ El criterio de éxito es independiente del criterio de selección. El modelo sel
 2. **Demostrar un equilibrio adecuado entre sensibilidad y especificidad**: ambas deben superar el nivel de azar (0.5).
 
 El baseline se calcula en `evaluar_baseline_mayoritaria` y el criterio en `evaluar_criterio_exito` (`src/models/evaluation.py`); ambos se persisten en `models/model_results.json` (`baseline_test` y `criterio_exito`).
+
+### 8.1 Tuning de MobileNetV2
+
+Ejecutable en `src/training/tuning_mobilenetv2.py` (CLI: `neumonia tune`). Reentrena MobileNetV2 desde los pesos ImageNet con varias configuraciones, siempre con el mismo reparto experimental, criterio de selección y callbacks que el flujo base:
+
+| Configuración | Base | Learning rate | Dropout |
+|---|---|---|---|
+| `lr_5e-5` | congelada | `5e-5` | 0.3 |
+| `lr_3e-4` | congelada | `3e-4` | 0.3 |
+| `dropout_0.5` | congelada | `1e-4` | 0.5 |
+| `finetune_block13` | `block_13`+ entrenable | `1e-4` | 0.3 |
+
+Los experimentos se imprimen ordenados por la regla jerárquica; el ganador se reentrena y su checkpoint se guarda en `models/mobilenetv2_ajustado/best_model.keras`. Resultados en `models/mobilenetv2_tuning_results.json` con `baseline`, `tabla_ordenada`, `seleccion`, `final_validation` y `final_test`. El `test` solo se usa para el `final_test` del ganador.
+
+La configuración elegida fue `lr_3e-4`. El fine-tuning (`finetune_block13`) se descartó: en validation alcanzó recall 1.0 pero especificidad 0.2388 (Balanced Accuracy 0.6194), probablemente por la base congelada y el batch pequeño que desestabiliza la normalización por lotes.
+
+### 8.2 Tratamiento del desbalance
+
+Ejecutable en `src/training/tuning_desbalance_clases.py` (CLI: `neumonia desbalance`). Sobre el ajustado `lr=3e-4` se evalúan por separado dos estrategias:
+
+- **Class weights:** pesos `balanced` calculados con `sklearn.compute_class_weight` sobre el `train` (`{0: 1.9445, 1: 0.6731}`), aplicados únicamente en el entrenamiento; en TensorFlow 2.15 el argumento `class_weight` respeta correctamente los batches de `tf.data`.
+- **Oversampling:** duplicación aleatoria de imágenes `NORMAL` en `train` (1 073 → 3 100; total train 6 200, +2 027 duplicadas). `validation` y `test` no se modifican.
+
+Se elige la variante con mayor Balanced Accuracy sobre `validation`; el ganador se reentrena y su checkpoint final se guarda en `models/mobilenetv2_desbalance_oversampling/best_model.keras`. Resultados en `models/mobilenetv2_desbalance_results.json` con `pesos_clase_balanceados`, `oversampling_train`, `tabla_seleccion`, `motivo_seleccion`, `final_validation` y `final_test`.
+
+La variante elegida fue el **oversampling**. El `model_name` del modelo final es `MobileNetV2-oversampling`.
 
 ## 9. Resultados reales
 
@@ -217,7 +254,59 @@ Matriz de confusión en test del modelo ganador: `[[138, 96], [5, 385]]` (TN = 1
 | Especificidad sobre azar (> 0.5) | Sí (0.5897) |
 | **Cumple el criterio de éxito** | **Sí** |
 
-**Modelo seleccionado: MobileNetV2** (por Balanced Accuracy → ROC-AUC → F1 → Accuracy sobre `validation`).
+**Modelo seleccionado en el flujo base: MobileNetV2** (por Balanced Accuracy → ROC-AUC → F1 → Accuracy sobre `validation`).
+
+### Resultados del tuning de MobileNetV2 (validation)
+
+Valores verificados contra `models/mobilenetv2_tuning_results.json`.
+
+| Configuración | Balanced Accuracy | Accuracy | Precision | Recall | Specificity | F1 | ROC-AUC |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Original (lr `1e-4`) | 0.9412 | 0.9434 | 0.9773 | 0.9458 | 0.9366 | 0.9613 | 0.9887 |
+| lr `5e-5` | 0.9415 | 0.9530 | 0.9714 | 0.9652 | 0.9179 | 0.9683 | 0.9862 |
+| **lr `3e-4` (seleccionada)** | **0.9547** | **0.9616** | **0.9791** | 0.9690 | 0.9403 | **0.9741** | **0.9928** |
+| dropout `0.5` | 0.9423 | 0.9559 | 0.9703 | 0.9703 | 0.9142 | 0.9703 | 0.9884 |
+| fine-tuning `block_13+` | 0.6194 | 0.8044 | 0.7916 | 1.0000 | 0.2388 | 0.8837 | 0.9978 |
+
+El ganador `lr_3e-4` se reentrenó con la misma configuración (final_validation: Balanced Accuracy 0.9555, ROC-AUC 0.9933, F1 0.9774, Accuracy 0.9664, Recall 0.9781, Specificity 0.9328) y se evaluó sobre `test`:
+
+| Métrica | Valor |
+---:|---:|
+| Accuracy | 0.8478 |
+| Balanced Accuracy | 0.7987 |
+| Precision | 0.8067 |
+| Recall/Sensitivity | 0.9949 |
+| Specificity | 0.6026 |
+| F1 | 0.8909 |
+| ROC-AUC | 0.9633 |
+
+### Resultados de los experimentos de desbalance (validation)
+
+Valores verificados contra `models/mobilenetv2_desbalance_results.json`.
+
+| Configuración | Balanced Accuracy | Accuracy | Precision | Recall | Specificity | F1 | ROC-AUC |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Ajustado `lr=3e-4` (referencia) | 0.9555 | 0.9664 | 0.9768 | 0.9781 | 0.9328 | 0.9774 | 0.9933 |
+| Class weights (solo entrenamiento) | 0.9530 | 0.9482 | 0.9865 | 0.9432 | 0.9627 | 0.9644 | 0.9925 |
+| **Oversampling `NORMAL` en train** | **0.9598** | **0.9674** | **0.9805** | **0.9755** | **0.9440** | **0.9780** | **0.9936** |
+
+El oversampling lideró la Balanced Accuracy de validation manteniendo un recall alto (0.9755) y fue la variante elegida. Los class weights mejoraron la especificidad (0.9627) pero redujeron el recall (0.9432) y la Balanced Accuracy, por lo que se descartaron. El ganador se reentrenó (final_validation: Balanced Accuracy 0.9573, ROC-AUC 0.9940) y dio el **resultado final del proyecto** sobre `test`:
+
+| Métrica | Valor |
+---:|---:|
+| Accuracy | **0.8878** |
+| Balanced Accuracy | **0.8590** |
+| Precision | 0.8636 |
+| Recall/Sensitivity | 0.9744 |
+| Specificity | **0.7436** |
+| F1 | **0.9157** |
+| ROC-AUC | 0.9612 |
+
+Matriz de confusión en test del modelo final: `[[174, 60], [10, 380]]` (TN = 174, FP = 60, FN = 10, TP = 380).
+
+**Modelo final del proyecto: MobileNetV2 + oversampling** (`models/mobilenetv2_desbalance_oversampling/best_model.keras`).
+
+> Nota: la mejora del oversampling es un hallazgo experimental sobre este dataset y no demuestra que el desbalance fuera la única causa de las diferencias observadas entre las configuraciones.
 
 ## 10. Testing
 
@@ -248,6 +337,9 @@ neumonia test
 - El `val` original del dataset crudo contiene solo 16 imágenes y no se utiliza en ningún experimento.
 - Existe desbalance entre `NORMAL` y `PNEUMONIA`.
 - Hay duplicados exactos dentro de algunos splits crudos, aunque no entre ellos.
+- El oversampling del modelo final duplica patrones `NORMAL` existentes en `train` y no genera información nueva; no debe confundirse con nuevas muestras clínicas.
+- El fine-tuning de las últimas capas de MobileNetV2 se descartó por degradar la especificidad; no forma parte del modelo final.
+- El resultado del oversampling es experimental y no demuestra que el desbalance fuera la única causa del comportamiento observado.
 - El trabajo es académico y experimental; no hay validación clínica ni despliegue.
 - La normalización es general a `[0, 1]` y no específica de cada backbone.
 - Los modelos no deben usarse como herramientas de diagnóstico médico.
@@ -261,9 +353,11 @@ neumonia test
 | Augmentación | Completada |
 | Modelado | Completado |
 | Entrenamiento | Completado (reentrenado con la nueva división) |
+| Tuning de MobileNetV2 | Completado (`lr=3e-4`) |
+| Tratamiento del desbalance | Completado (oversampling) |
 | Evaluación | Completada |
 | Comparación | Completada |
-| Selección | MobileNetV2 |
+| Selección final | MobileNetV2 + oversampling |
 | Testing | 34/34 pruebas aprobadas |
 | Documentación | Actualizada |
 | Despliegue productivo | Fuera del alcance |

@@ -93,6 +93,8 @@ neumonia eda        # Análisis exploratorio de datos (sección 9)
 neumonia prepare    # Preparación de datos: manifiesto 80/20 (train original) y verificación de pipelines (sección 10)
 neumonia augment    # Figura de ejemplos de augmentación (sección 11.1)
 neumonia train      # Entrenar VGG16, ResNet50 y MobileNetV2; evaluar, comparar y seleccionar (sección 11)
+neumonia tune       # Tuning experimental de MobileNetV2: lr, dropout y fine-tuning (sección 11.2)
+neumonia desbalance # Experimentos de desbalance: class weight y oversampling sobre el ajustado lr=3e-4 (sección 11.3)
 neumonia evaluate   # Mostrar los resultados guardados sin volver a entrenar (sección 14)
 neumonia test       # Ejecutar la suite de pruebas con pytest (sección 15)
 neumonia run        # Flujo completo: EDA -> preparación -> augmentación -> entrenamiento -> evaluación -> test
@@ -127,7 +129,15 @@ neumonia evaluate
 neumonia test
 ```
 
-`neumonia train` consume bastante tiempo y recursos. `neumonia run` encadena todas las etapas en ese mismo orden (no ejecuta `dvc pull`; el dataset se administra con DVC).
+Las etapas siguientes **no forman parte del flujo base** y solo son necesarias si se desea reproducir la mejora del modelo:
+
+```powershell
+neumonia tune        # regula learning rate, dropout y fine-tuning de MobileNetV2
+neumonia desbalance  # decide entre class weight y oversampling sobre el ajustado lr=3e-4
+neumonia evaluate
+```
+
+`neumonia train`, `neumonia tune` y `neumonia desbalance` consumen bastante tiempo y recursos en CPU. `neumonia run` encadena solo las etapas del flujo base en ese mismo orden (no ejecuta `dvc pull`; el dataset se administra con DVC) y **no** incluye `tune` ni `desbalance`.
 
 Como alternativa, cada comando se puede invocar con el intérprete del entorno sin activarlo:
 
@@ -183,6 +193,44 @@ Para visualizar el efecto de la augmentation sobre una imagen real del `train` (
 
 Genera `reports/figures/data_augmentation_examples.png`, una figura de 2x2 con la imagen original y variantes obtenidas únicamente con `RandomRotation(0.05)` y `RandomZoom(0.05)`. El volteo horizontal fue eliminado del pipeline porque en radiografías de tórax puede existir información de lateralidad anatómica (marcadores L/R) que un volteo horizontal podría invertir artificialmente.
 
+### 11.2 Tuning de MobileNetV2
+
+El tuning experimental de MobileNetV2 se ejecuta con:
+
+```powershell
+.\.venv\Scripts\python.exe -m src.training.tuning_mobilenetv2
+```
+
+Equivale a `neumonia tune`. Reentrena MobileNetV2 (partiendo de los pesos ImageNet) con varias configuraciones sobre el reparto experimental:
+
+- lr `5e-5` (base congelada);
+- lr `3e-4` (base congelada);
+- dropout `0.5` (base congelada);
+- fine-tuning de las últimas capas (`block_13+`) con lr `1e-4`.
+
+La selección se hace **solo con métricas de `validation`** con el mismo criterio jerárquico (Balanced Accuracy, ROC-AUC, F1, Accuracy). El `test` original queda reservado y solo se evalúa la configuración ganadora al final.
+
+La configuración ganadora fue **lr `3e-4`** con dropout `0.3` y base congelada. El fine-tuning `block_13+` se descartó por degradar la especificidad (0.2388 en validation). Al terminar se generan `models/mobilenetv2_tuning_results.json` y el checkpoint `models/mobilenetv2_ajustado/best_model.keras`.
+
+### 11.3 Tratamiento del desbalance
+
+Los experimentos de desbalance sobre el ajustado `lr=3e-4` se ejecutan con:
+
+```powershell
+.\.venv\Scripts\python.exe -m src.training.tuning_desbalance_clases
+```
+
+Equivale a `neumonia desbalance`. Reentrena el ajustado con dos estrategias tratadas por separado:
+
+- **class weight** en el entrenamiento: pesos `balanced` calculados con `sklearn` sobre el `train` (NORMAL≈1.9445, PNEUMONIA≈0.6731);
+- **oversampling**: se duplican aleatoriamente imágenes `NORMAL` en `train` (1 073 → 3 100; total train 6 200) para equilibrar las clases.
+
+Ninguna estrategia modifica `validation` ni `test`. La selección usa el mismo criterio jerárquico sobre `validation`; el `test` solo se evalúa para el ganador al final.
+
+El ganador fue el **oversampling**. Al terminar se generan `models/mobilenetv2_desbalance_results.json` y el checkpoint final `models/mobilenetv2_desbalance_oversampling/best_model.keras`.
+
+> Nota: los resultados de estas dos secciones son experimentales sobre este dataset. Mejorar la Balanced Accuracy con oversampling no demuestra que el desbalance fuera la única causa de las diferencias observadas.
+
 ## 12. Evaluación
 
 La evaluación está integrada en el comando anterior. Cada modelo se evalúa primero sobre el subconjunto `validation` (1.043 imágenes), se aplica umbral 0.5 sobre las probabilidades y se calculan métricas. Se generan:
@@ -215,9 +263,11 @@ Sobre el `test` original se calcula además:
 
 Todo se persiste en `models/model_results.json`.
 
+> El tuning (sección 11.2) y los experimentos de desbalance (sección 11.3) reutilizan el mismo criterio jerárquico, pero persisten sus propios resultados en `models/mobilenetv2_tuning_results.json` y `models/mobilenetv2_desbalance_results.json`; `models/model_results.json` conserva intactos los resultados del flujo base.
+
 ## 14. Consultar el modelo seleccionado
 
-Para consultar el ganador guardado sin entrenar:
+Para consultar el ganador del flujo base guardado sin entrenar:
 
 ```powershell
 $result = Get-Content -Raw models/model_results.json | ConvertFrom-Json
@@ -230,6 +280,24 @@ $result.final_test | Format-List model_name, accuracy, balanced_accuracy, precis
 
 El bloque `validation_comparison.winner` es el modelo seleccionado únicamente con métricas de `validation`. El bloque `final_test` contiene las métricas del ganador sobre el `test` original de 624 imágenes, única evaluación realizada sobre ese conjunto.
 
+Para consultar la selección y el test del modelo final (MobileNetV2 + oversampling), usar los resultados experimentales:
+
+```powershell
+$desb = Get-Content -Raw models/mobilenetv2_desbalance_results.json | ConvertFrom-Json
+$desb.tabla_seleccion | Format-Table experimento, balanced_accuracy, accuracy, recall, specificity, f1, roc_auc
+$desb.motivo_seleccion
+$desb.final_test | Format-List model_name, accuracy, balanced_accuracy, precision, recall, specificity, f1, roc_auc
+$desb.final_test.confusion_matrix
+```
+
+Para consultar la selección del tuning:
+
+```powershell
+$tun = Get-Content -Raw models/mobilenetv2_tuning_results.json | ConvertFrom-Json
+$tun.tabla_ordenada | Format-Table experimento, balanced_accuracy, accuracy, recall, specificity, f1, roc_auc
+$tun.seleccion
+```
+
 ## 15. Ejecutar los tests
 
 ```powershell
@@ -240,13 +308,17 @@ La suite actual contiene 34 pruebas. Incluye verificaciones de la nueva divisió
 
 ## 16. Ubicación de artefactos
 
-- Modelos: `models/vgg16/best_model.keras`, `models/resnet50/best_model.keras` y `models/mobilenetv2/best_model.keras`.
-- Resultados: `models/model_results.json`.
+- Modelos del flujo base: `models/vgg16/best_model.keras`, `models/resnet50/best_model.keras` y `models/mobilenetv2/best_model.keras`.
+- Modelo ajustado (`lr=3e-4`, experimental): `models/mobilenetv2_ajustado/best_model.keras`.
+- **Modelo final (oversampling):** `models/mobilenetv2_desbalance_oversampling/best_model.keras`.
+- Resultados del flujo base: `models/model_results.json`.
+- Resultados del tuning: `models/mobilenetv2_tuning_results.json`.
+- Resultados del desbalance: `models/mobilenetv2_desbalance_results.json`.
 - Manifiesto del reparto experimental: `data/interim/stratified_split_train80_val20_test_original.csv`.
-- Figuras EDA, evaluación y augmentación: `reports/figures/`.
+- Figuras EDA, evaluación, augmentación, tuning y desbalance: `reports/figures/`.
 - Código de datos: `src/data/`.
 - Código de modelos: `src/models/`.
-- Código de entrenamiento: `src/training/`.
+- Código de entrenamiento: `src/training/` (`run_real_training.py`, `tuning_mobilenetv2.py`, `tuning_desbalance_clases.py`).
 - Código de visualización: `src/visualization/`.
 - Tests: `tests/`.
 

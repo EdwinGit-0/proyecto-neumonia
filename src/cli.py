@@ -7,6 +7,8 @@ de invocar módulos completos:
     neumonia prepare
     neumonia augment
     neumonia train
+    neumonia tune
+    neumonia desbalance
     neumonia evaluate
     neumonia test
     neumonia run
@@ -124,6 +126,37 @@ def train() -> None:
     click.echo("Resultados finales sobre test (solo el modelo ganador):")
     click.echo(json.dumps(resultado["final_test"], indent=2, default=str))
     click.echo("Entrenamiento completado.")
+
+
+@cli.command()
+def tune() -> None:
+    """Ejecutar el tuning experimental de MobileNetV2 (learning rate, dropout y fine-tuning)."""
+    from src.training.tuning_mobilenetv2 import entrenar_y_evaluar_tuning
+
+    click.echo("Este comando reentrena MobileNetV2 con varias configuraciones y puede tardar bastante (no interrumpir).")
+    click.echo("Solo se usan TRAIN y VALIDATION para decidir; el TEST queda reservado para el final.")
+    resultado = entrenar_y_evaluar_tuning()
+    click.echo("Configuración elegida:")
+    click.echo(json.dumps(resultado["seleccion"], indent=2, default=str))
+    click.echo("Resultados finales sobre test del modelo elegido:")
+    click.echo(json.dumps(resultado["final_test"], indent=2, default=str))
+    click.echo("Tuning completado. Resultados en models/mobilenetv2_tuning_results.json")
+
+
+@cli.command()
+def desbalance() -> None:
+    """Ejecutar los experimentos de desbalance de clases (class_weight y oversampling) sobre el ajustado lr=3e-4."""
+    from src.training.tuning_desbalance_clases import entrenar_y_evaluar_desbalance
+
+    click.echo("Este comando reentrena variantes con class_weight y oversampling y puede tardar bastante (no interrumpir).")
+    click.echo("Solo se usan TRAIN y VALIDATION para decidir; el TEST queda reservado para el final.")
+    resultado = entrenar_y_evaluar_desbalance()
+    click.echo("Tabla de selección sobre validation:")
+    click.echo(json.dumps(resultado["tabla_seleccion"], indent=2, default=str))
+    click.echo(f"Motivo de la selección: {resultado['motivo_seleccion']}")
+    click.echo("Resultados finales sobre test del modelo elegido:")
+    click.echo(json.dumps(resultado["final_test"], indent=2, default=str))
+    click.echo("Experimentos completados. Resultados en models/mobilenetv2_desbalance_results.json")
 
 
 @cli.command()
