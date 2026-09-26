@@ -6,6 +6,7 @@ de invocar módulos completos:
     neumonia eda
     neumonia prepare
     neumonia augment
+    neumonia sensibilidad
     neumonia train
     neumonia tune
     neumonia desbalance
@@ -115,6 +116,72 @@ def augment() -> None:
 
 
 @cli.command()
+@click.option(
+    "--recalcular",
+    is_flag=True,
+    help="Reentrenar los 21 experimentos (3 arquitecturas x 7 configuraciones).",
+)
+def sensibilidad(recalcular: bool) -> None:
+    """Analizar la sensibilidad de learning rate, dropout y épocas (solo TRAIN y VALIDATION)."""
+    import pandas as pd
+
+    from src.training.sensitivity import (
+        METRICAS_REPORTE,
+        RUTA_RESULTADOS as RUTA_SENSIBILIDAD,
+        ejecutar_analisis_sensibilidad,
+    )
+
+    if recalcular:
+        click.echo("Ejecutando el analisis de sensibilidad: 21 entrenamientos en CPU (puede tardar horas).")
+    else:
+        click.echo("Consultando el analisis de sensibilidad ya registrado...")
+
+    try:
+        payload = ejecutar_analisis_sensibilidad(recalcular=recalcular)
+    except FileNotFoundError as error:
+        raise click.ClickException(str(error)) from error
+
+    click.echo(f"Artefacto: {RUTA_SENSIBILIDAD}")
+    click.echo(f"Splits utilizados: {', '.join(payload['splits_utilizados'])} (el test no interviene)")
+
+    columnas = ["model_name", "config_id", "learning_rate", "dropout", "epochs", *METRICAS_REPORTE]
+    filas = []
+    for item in payload["resultados"]:
+        fila = {
+            "model_name": item["model_name"],
+            "config_id": item["config_id"],
+            **item["config"],
+        }
+        fila.update({metrica: item["validation"][metrica] for metrica in METRICAS_REPORTE})
+        filas.append(fila)
+    tabla = pd.DataFrame(filas)[columnas]
+    click.echo("\nResultados de validacion (21 experimentos):")
+    click.echo(tabla.to_string(index=False))
+
+    click.echo("\nMejor configuracion por arquitectura:")
+    for model_name, info in payload["mejor_por_arquitectura"].items():
+        config = info["config"]
+        delta = info["delta_balanced_accuracy_vs_referencia"]
+        click.echo(
+            f"  {model_name}: lr={config['learning_rate']}, dropout={config['dropout']}, "
+            f"epochs={config['epochs']} -> balanced_accuracy={info['validation']['balanced_accuracy']:.4f} "
+            f"(delta vs base {delta:+.4f})"
+        )
+
+    ganador = payload["ganador_global"]
+    click.echo(
+        f"\nGanador global: {ganador['model_name']} con {ganador['config_id']} "
+        f"(balanced_accuracy={ganador['validation']['balanced_accuracy']:.4f}, "
+        f"roc_auc={ganador['validation']['roc_auc']:.4f})"
+    )
+    from src.utils.paths import DIRECTORIO_FIGURAS
+
+    click.echo(f"Figura guardada en: {DIRECTORIO_FIGURAS / 'sensitivity_validation.png'}")
+    click.echo(f"Comparacion actualizada en: {RUTA_RESULTADOS}")
+    click.echo("Analisis de sensibilidad completado.")
+
+
+@cli.command()
 def train() -> None:
     """Entrenar VGG16, ResNet50 y MobileNetV2; evaluar, comparar y seleccionar el mejor."""
     from src.training.run_real_training import entrenar_y_evaluar_modelos
@@ -219,11 +286,12 @@ def test(verbose: bool) -> None:
 
 @cli.command()
 def run() -> None:
-    """Ejecutar el flujo completo: EDA, preparación, augmentación, entrenamiento, evaluación y test."""
+    """Ejecutar el flujo completo: EDA, preparación, augmentación, sensibilidad, entrenamiento, evaluación y test."""
     click.echo("=== Flujo completo del proyecto ===")
     eda()
     prepare()
     augment()
+    sensibilidad(recalcular=False)
     train()
     evaluate()
     test()

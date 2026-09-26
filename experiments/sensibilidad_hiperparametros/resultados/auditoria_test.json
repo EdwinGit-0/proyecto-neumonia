@@ -1,0 +1,91 @@
+{
+  "advertencia": "Auditor\u00eda retrospectiva. TEST no se us\u00f3 para seleccionar ni para ajustar hiperpar\u00e1metros.",
+  "n_test": 624,
+  "clases_test": {
+    "NORMAL": 234,
+    "PNEUMONIA": 390
+  },
+  "modelos": {
+    "VGG16": {
+      "config_id": "lr_1e-3",
+      "config": {
+        "learning_rate": 0.001,
+        "dropout": 0.3,
+        "epochs_max": 3
+      },
+      "estado": "completado",
+      "test": {
+        "accuracy": 0.8862179487179487,
+        "precision": 0.8717948717948718,
+        "recall": 0.958974358974359,
+        "specificity": 0.7649572649572649,
+        "balanced_accuracy": 0.861965811965812,
+        "f1": 0.9133089133089133,
+        "roc_auc": 0.946898969975893,
+        "n_evaluadas": 624,
+        "n_clase_0": 234,
+        "n_clase_1": 390,
+        "matriz_confusion": {
+          "tn": 179,
+          "fp": 55,
+          "fn": 16,
+          "tp": 374
+        }
+      }
+    },
+    "ResNet50": {
+      "config_id": "lr_1e-3",
+      "config": {
+        "learning_rate": 0.001,
+        "dropout": 0.3,
+        "epochs_max": 3
+      },
+      "estado": "completado",
+      "test": {
+        "accuracy": 0.7227564102564102,
+        "precision": 0.716566866267465,
+        "recall": 0.9205128205128205,
+        "specificity": 0.39316239316239315,
+        "balanced_accuracy": 0.6568376068376068,
+        "f1": 0.8058361391694725,
+        "roc_auc": 0.8432281393819856,
+        "n_evaluadas": 624,
+        "n_clase_0": 234,
+        "n_clase_1": 390,
+        "matriz_confusion": {
+          "tn": 92,
+          "fp": 142,
+          "fn": 31,
+          "tp": 359
+        }
+      }
+    },
+    "MobileNetV2": {
+      "config_id": "lr_1e-3",
+      "config": {
+        "learning_rate": 0.001,
+        "dropout": 0.3,
+        "epochs_max": 3
+      },
+      "estado": "completado",
+      "test": {
+        "accuracy": 0.8413461538461539,
+        "precision": 0.8037578288100209,
+        "recall": 0.9871794871794872,
+        "specificity": 0.5982905982905983,
+        "balanced_accuracy": 0.7927350427350428,
+        "f1": 0.8860759493670886,
+        "roc_auc": 0.9611549419241727,
+        "n_evaluadas": 624,
+        "n_clase_0": 234,
+        "n_clase_1": 390,
+        "matriz_confusion": {
+          "tn": 140,
+          "fp": 94,
+          "fn": 5,
+          "tp": 385
+        }
+      }
+    }
+  }
+}

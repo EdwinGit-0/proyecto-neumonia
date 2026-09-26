@@ -1,0 +1,1565 @@
+{
+  "descripcion": "Etapa de sensibilidad de hiperparametros previa a la seleccion de arquitecturas. Un factor por vez: learning rate, dropout y numero maximo de epocas.",
+  "etapa": "sensibilidad",
+  "split_manifest": "D:\\CIENCIA_DATOS\\Modulo_6\\Code\\proyecto-neumonia\\data\\interim\\stratified_split_train80_val20_test_original.csv",
+  "manifiesto_sha256": "ab2b55cc92acc1e06eeecf651f467a2fa407baf337654e852244eca6b7f43593",
+  "seed": 42,
+  "batch_size": 16,
+  "tamano_imagen": [
+    224,
+    224
+  ],
+  "configuracion_base": {
+    "learning_rate": 0.0001,
+    "dropout": 0.3,
+    "epochs": 3
+  },
+  "grupos": {
+    "learning_rate": [
+      0.0001,
+      0.0003,
+      0.001
+    ],
+    "dropout": [
+      0.3,
+      0.2,
+      0.5
+    ],
+    "epochs": [
+      3,
+      5,
+      10
+    ]
+  },
+  "criterio_seleccion": [
+    "balanced_accuracy",
+    "roc_auc",
+    "f1",
+    "accuracy"
+  ],
+  "splits_utilizados": [
+    "train",
+    "val"
+  ],
+  "test_utilizado": false,
+  "distribucion": {
+    "train": {
+      "NORMAL": 1073,
+      "PNEUMONIA": 3100
+    },
+    "val": {
+      "NORMAL": 268,
+      "PNEUMONIA": 775
+    }
+  },
+  "entorno": {
+    "python": "3.10.11",
+    "tensorflow": "2.15.0",
+    "gpus": []
+  },
+  "procedencia": {
+    "tipo": "resultados_ya_medidos",
+    "archivo_origen": "experiments\\sensibilidad_hiperparametros\\resultados\\sensibilidad_resultados.json",
+    "sha256_origen": "24e855896aa71e381f16b3da3d50cfc38f592dc79430e4543f710e4d2348a55f",
+    "nota": "Barrido ejecutado con el mismo dataset, division, preprocesamiento, augmentation y semilla que el entrenamiento base. No se vuelven a entrenar los checkpoints."
+  },
+  "configuraciones": [
+    {
+      "id": "ref_lr1e-4_do0.3_ep3",
+      "grupo": "referencia",
+      "learning_rate": 0.0001,
+      "dropout": 0.3,
+      "epochs": 3,
+      "es_referencia": true,
+      "variante_de": [
+        "learning_rate",
+        "dropout",
+        "epochs"
+      ]
+    },
+    {
+      "id": "lr_3e-4",
+      "grupo": "learning_rate",
+      "learning_rate": 0.0003,
+      "dropout": 0.3,
+      "epochs": 3,
+      "es_referencia": false,
+      "variante_de": [
+        "learning_rate"
+      ]
+    },
+    {
+      "id": "lr_1e-3",
+      "grupo": "learning_rate",
+      "learning_rate": 0.001,
+      "dropout": 0.3,
+      "epochs": 3,
+      "es_referencia": false,
+      "variante_de": [
+        "learning_rate"
+      ]
+    },
+    {
+      "id": "do_0.2",
+      "grupo": "dropout",
+      "learning_rate": 0.0001,
+      "dropout": 0.2,
+      "epochs": 3,
+      "es_referencia": false,
+      "variante_de": [
+        "dropout"
+      ]
+    },
+    {
+      "id": "do_0.5",
+      "grupo": "dropout",
+      "learning_rate": 0.0001,
+      "dropout": 0.5,
+      "epochs": 3,
+      "es_referencia": false,
+      "variante_de": [
+        "dropout"
+      ]
+    },
+    {
+      "id": "ep_5",
+      "grupo": "epochs",
+      "learning_rate": 0.0001,
+      "dropout": 0.3,
+      "epochs": 5,
+      "es_referencia": false,
+      "variante_de": [
+        "epochs"
+      ]
+    },
+    {
+      "id": "ep_10",
+      "grupo": "epochs",
+      "learning_rate": 0.0001,
+      "dropout": 0.3,
+      "epochs": 10,
+      "es_referencia": false,
+      "variante_de": [
+        "epochs"
+      ]
+    }
+  ],
+  "resultados": [
+    {
+      "model_name": "VGG16",
+      "config_id": "ref_lr1e-4_do0.3_ep3",
+      "grupo": "referencia",
+      "config": {
+        "learning_rate": 0.0001,
+        "dropout": 0.3,
+        "epochs": 3
+      },
+      "es_referencia": true,
+      "variante_de": [
+        "learning_rate",
+        "dropout",
+        "epochs"
+      ],
+      "epochs_ejecutadas": 3,
+      "early_stopping": false,
+      "learning_rate_final": 9.999999747378752e-05,
+      "segundos_entrenamiento": 1103.5170164108276,
+      "checkpoint": "D:\\CIENCIA_DATOS\\Modulo_6\\Code\\proyecto-neumonia\\experiments\\sensibilidad_hiperparametros\\checkpoints\\vgg16\\ref_lr1e-4_do0.3_ep3\\best_model.keras",
+      "validation": {
+        "accuracy": 0.909875359539789,
+        "precision": 0.9337579617834395,
+        "recall": 0.9458064516129032,
+        "specificity": 0.8059701492537313,
+        "balanced_accuracy": 0.8758883004333173,
+        "f1": 0.9397435897435897,
+        "roc_auc": 0.9642994703899856,
+        "n_evaluadas": 1043,
+        "n_clase_0": 268,
+        "n_clase_1": 775,
+        "matriz_confusion": {
+          "tn": 216,
+          "fp": 52,
+          "fn": 42,
+          "tp": 733
+        }
+      }
+    },
+    {
+      "model_name": "VGG16",
+      "config_id": "lr_3e-4",
+      "grupo": "learning_rate",
+      "config": {
+        "learning_rate": 0.0003,
+        "dropout": 0.3,
+        "epochs": 3
+      },
+      "es_referencia": false,
+      "variante_de": [
+        "learning_rate"
+      ],
+      "epochs_ejecutadas": 3,
+      "early_stopping": false,
+      "learning_rate_final": 0.0003000000142492354,
+      "segundos_entrenamiento": 1053.4939861297607,
+      "checkpoint": "D:\\CIENCIA_DATOS\\Modulo_6\\Code\\proyecto-neumonia\\experiments\\sensibilidad_hiperparametros\\checkpoints\\vgg16\\lr_3e-4\\best_model.keras",
+      "validation": {
+        "accuracy": 0.9261744966442953,
+        "precision": 0.9780821917808219,
+        "recall": 0.9212903225806451,
+        "specificity": 0.9402985074626866,
+        "balanced_accuracy": 0.9307944150216658,
+        "f1": 0.9488372093023256,
+        "roc_auc": 0.975835339431873,
+        "n_evaluadas": 1043,
+        "n_clase_0": 268,
+        "n_clase_1": 775,
+        "matriz_confusion": {
+          "tn": 252,
+          "fp": 16,
+          "fn": 61,
+          "tp": 714
+        }
+      }
+    },
+    {
+      "model_name": "VGG16",
+      "config_id": "lr_1e-3",
+      "grupo": "learning_rate",
+      "config": {
+        "learning_rate": 0.001,
+        "dropout": 0.3,
+        "epochs": 3
+      },
+      "es_referencia": false,
+      "variante_de": [
+        "learning_rate"
+      ],
+      "epochs_ejecutadas": 3,
+      "early_stopping": false,
+      "learning_rate_final": 0.0010000000474974513,
+      "segundos_entrenamiento": 995.9961607456207,
+      "checkpoint": "D:\\CIENCIA_DATOS\\Modulo_6\\Code\\proyecto-neumonia\\experiments\\sensibilidad_hiperparametros\\checkpoints\\vgg16\\lr_1e-3\\best_model.keras",
+      "validation": {
+        "accuracy": 0.925215723873442,
+        "precision": 0.9887798036465638,
+        "recall": 0.9096774193548387,
+        "specificity": 0.9701492537313433,
+        "balanced_accuracy": 0.939913336543091,
+        "f1": 0.9475806451612904,
+        "roc_auc": 0.9850312951372172,
+        "n_evaluadas": 1043,
+        "n_clase_0": 268,
+        "n_clase_1": 775,
+        "matriz_confusion": {
+          "tn": 260,
+          "fp": 8,
+          "fn": 70,
+          "tp": 705
+        }
+      }
+    },
+    {
+      "model_name": "VGG16",
+      "config_id": "do_0.2",
+      "grupo": "dropout",
+      "config": {
+        "learning_rate": 0.0001,
+        "dropout": 0.2,
+        "epochs": 3
+      },
+      "es_referencia": false,
+      "variante_de": [
+        "dropout"
+      ],
+      "epochs_ejecutadas": 3,
+      "early_stopping": false,
+      "learning_rate_final": 9.999999747378752e-05,
+      "segundos_entrenamiento": 990.1986768245697,
+      "checkpoint": "D:\\CIENCIA_DATOS\\Modulo_6\\Code\\proyecto-neumonia\\experiments\\sensibilidad_hiperparametros\\checkpoints\\vgg16\\do_0.2\\best_model.keras",
+      "validation": {
+        "accuracy": 0.9117929050814957,
+        "precision": 0.9372599231754162,
+        "recall": 0.944516129032258,
+        "specificity": 0.8171641791044776,
+        "balanced_accuracy": 0.8808401540683678,
+        "f1": 0.9408740359897172,
+        "roc_auc": 0.9647857486759748,
+        "n_evaluadas": 1043,
+        "n_clase_0": 268,
+        "n_clase_1": 775,
+        "matriz_confusion": {
+          "tn": 219,
+          "fp": 49,
+          "fn": 43,
+          "tp": 732
+        }
+      }
+    },
+    {
+      "model_name": "VGG16",
+      "config_id": "do_0.5",
+      "grupo": "dropout",
+      "config": {
+        "learning_rate": 0.0001,
+        "dropout": 0.5,
+        "epochs": 3
+      },
+      "es_referencia": false,
+      "variante_de": [
+        "dropout"
+      ],
+      "epochs_ejecutadas": 3,
+      "early_stopping": false,
+      "learning_rate_final": 9.999999747378752e-05,
+      "segundos_entrenamiento": 1000.1982548236847,
+      "checkpoint": "D:\\CIENCIA_DATOS\\Modulo_6\\Code\\proyecto-neumonia\\experiments\\sensibilidad_hiperparametros\\checkpoints\\vgg16\\do_0.5\\best_model.keras",
+      "validation": {
+        "accuracy": 0.900287631831256,
+        "precision": 0.9167701863354037,
+        "recall": 0.952258064516129,
+        "specificity": 0.75,
+        "balanced_accuracy": 0.8511290322580645,
+        "f1": 0.9341772151898734,
+        "roc_auc": 0.963389504092441,
+        "n_evaluadas": 1043,
+        "n_clase_0": 268,
+        "n_clase_1": 775,
+        "matriz_confusion": {
+          "tn": 201,
+          "fp": 67,
+          "fn": 37,
+          "tp": 738
+        }
+      }
+    },
+    {
+      "model_name": "VGG16",
+      "config_id": "ep_5",
+      "grupo": "epochs",
+      "config": {
+        "learning_rate": 0.0001,
+        "dropout": 0.3,
+        "epochs": 5
+      },
+      "es_referencia": false,
+      "variante_de": [
+        "epochs"
+      ],
+      "epochs_ejecutadas": 5,
+      "early_stopping": false,
+      "learning_rate_final": 9.999999747378752e-05,
+      "segundos_entrenamiento": 1731.2218856811523,
+      "checkpoint": "D:\\CIENCIA_DATOS\\Modulo_6\\Code\\proyecto-neumonia\\experiments\\sensibilidad_hiperparametros\\checkpoints\\vgg16\\ep_5\\best_model.keras",
+      "validation": {
+        "accuracy": 0.9194630872483222,
+        "precision": 0.9700680272108844,
+        "recall": 0.92,
+        "specificity": 0.917910447761194,
+        "balanced_accuracy": 0.918955223880597,
+        "f1": 0.9443708609271523,
+        "roc_auc": 0.9700048146364951,
+        "n_evaluadas": 1043,
+        "n_clase_0": 268,
+        "n_clase_1": 775,
+        "matriz_confusion": {
+          "tn": 246,
+          "fp": 22,
+          "fn": 62,
+          "tp": 713
+        }
+      }
+    },
+    {
+      "model_name": "VGG16",
+      "config_id": "ep_10",
+      "grupo": "epochs",
+      "config": {
+        "learning_rate": 0.0001,
+        "dropout": 0.3,
+        "epochs": 10
+      },
+      "es_referencia": false,
+      "variante_de": [
+        "epochs"
+      ],
+      "epochs_ejecutadas": 10,
+      "early_stopping": false,
+      "learning_rate_final": 9.999999747378752e-05,
+      "segundos_entrenamiento": 3525.50536942482,
+      "checkpoint": "D:\\CIENCIA_DATOS\\Modulo_6\\Code\\proyecto-neumonia\\experiments\\sensibilidad_hiperparametros\\checkpoints\\vgg16\\ep_10\\best_model.keras",
+      "validation": {
+        "accuracy": 0.9290508149568553,
+        "precision": 0.9704697986577181,
+        "recall": 0.9329032258064516,
+        "specificity": 0.917910447761194,
+        "balanced_accuracy": 0.9254068367838229,
+        "f1": 0.9513157894736842,
+        "roc_auc": 0.976793452094367,
+        "n_evaluadas": 1043,
+        "n_clase_0": 268,
+        "n_clase_1": 775,
+        "matriz_confusion": {
+          "tn": 246,
+          "fp": 22,
+          "fn": 52,
+          "tp": 723
+        }
+      }
+    },
+    {
+      "model_name": "ResNet50",
+      "config_id": "ref_lr1e-4_do0.3_ep3",
+      "grupo": "referencia",
+      "config": {
+        "learning_rate": 0.0001,
+        "dropout": 0.3,
+        "epochs": 3
+      },
+      "es_referencia": true,
+      "variante_de": [
+        "learning_rate",
+        "dropout",
+        "epochs"
+      ],
+      "epochs_ejecutadas": 3,
+      "early_stopping": false,
+      "learning_rate_final": 9.999999747378752e-05,
+      "segundos_entrenamiento": 710.1906960010529,
+      "checkpoint": "D:\\CIENCIA_DATOS\\Modulo_6\\Code\\proyecto-neumonia\\experiments\\sensibilidad_hiperparametros\\checkpoints\\resnet50\\ref_lr1e-4_do0.3_ep3\\best_model.keras",
+      "validation": {
+        "accuracy": 0.7430488974113135,
+        "precision": 0.7430488974113135,
+        "recall": 1.0,
+        "specificity": 0.0,
+        "balanced_accuracy": 0.5,
+        "f1": 0.8525852585258525,
+        "roc_auc": 0.8832932113625422,
+        "n_evaluadas": 1043,
+        "n_clase_0": 268,
+        "n_clase_1": 775,
+        "matriz_confusion": {
+          "tn": 0,
+          "fp": 268,
+          "fn": 0,
+          "tp": 775
+        }
+      }
+    },
+    {
+      "model_name": "ResNet50",
+      "config_id": "lr_3e-4",
+      "grupo": "learning_rate",
+      "config": {
+        "learning_rate": 0.0003,
+        "dropout": 0.3,
+        "epochs": 3
+      },
+      "es_referencia": false,
+      "variante_de": [
+        "learning_rate"
+      ],
+      "epochs_ejecutadas": 3,
+      "early_stopping": false,
+      "learning_rate_final": 0.0003000000142492354,
+      "segundos_entrenamiento": 726.8515338897705,
+      "checkpoint": "D:\\CIENCIA_DATOS\\Modulo_6\\Code\\proyecto-neumonia\\experiments\\sensibilidad_hiperparametros\\checkpoints\\resnet50\\lr_3e-4\\best_model.keras",
+      "validation": {
+        "accuracy": 0.8072866730584851,
+        "precision": 0.8174778761061947,
+        "recall": 0.9535483870967741,
+        "specificity": 0.3843283582089552,
+        "balanced_accuracy": 0.6689383726528647,
+        "f1": 0.8802858844550328,
+        "roc_auc": 0.8893837265286471,
+        "n_evaluadas": 1043,
+        "n_clase_0": 268,
+        "n_clase_1": 775,
+        "matriz_confusion": {
+          "tn": 103,
+          "fp": 165,
+          "fn": 36,
+          "tp": 739
+        }
+      }
+    },
+    {
+      "model_name": "ResNet50",
+      "config_id": "lr_1e-3",
+      "grupo": "learning_rate",
+      "config": {
+        "learning_rate": 0.001,
+        "dropout": 0.3,
+        "epochs": 3
+      },
+      "es_referencia": false,
+      "variante_de": [
+        "learning_rate"
+      ],
+      "epochs_ejecutadas": 3,
+      "early_stopping": false,
+      "learning_rate_final": 0.0010000000474974513,
+      "segundos_entrenamiento": 701.8981592655182,
+      "checkpoint": "D:\\CIENCIA_DATOS\\Modulo_6\\Code\\proyecto-neumonia\\experiments\\sensibilidad_hiperparametros\\checkpoints\\resnet50\\lr_1e-3\\best_model.keras",
+      "validation": {
+        "accuracy": 0.822627037392138,
+        "precision": 0.8571428571428571,
+        "recall": 0.9135483870967742,
+        "specificity": 0.5597014925373134,
+        "balanced_accuracy": 0.7366249398170438,
+        "f1": 0.8844472204871955,
+        "roc_auc": 0.8930669234472799,
+        "n_evaluadas": 1043,
+        "n_clase_0": 268,
+        "n_clase_1": 775,
+        "matriz_confusion": {
+          "tn": 150,
+          "fp": 118,
+          "fn": 67,
+          "tp": 708
+        }
+      }
+    },
+    {
+      "model_name": "ResNet50",
+      "config_id": "do_0.2",
+      "grupo": "dropout",
+      "config": {
+        "learning_rate": 0.0001,
+        "dropout": 0.2,
+        "epochs": 3
+      },
+      "es_referencia": false,
+      "variante_de": [
+        "dropout"
+      ],
+      "epochs_ejecutadas": 3,
+      "early_stopping": false,
+      "learning_rate_final": 9.999999747378752e-05,
+      "segundos_entrenamiento": 687.9839386940002,
+      "checkpoint": "D:\\CIENCIA_DATOS\\Modulo_6\\Code\\proyecto-neumonia\\experiments\\sensibilidad_hiperparametros\\checkpoints\\resnet50\\do_0.2\\best_model.keras",
+      "validation": {
+        "accuracy": 0.7420901246404602,
+        "precision": 0.7428023032629558,
+        "recall": 0.9987096774193548,
+        "specificity": 0.0,
+        "balanced_accuracy": 0.4993548387096774,
+        "f1": 0.8519537699504678,
+        "roc_auc": 0.8842320654790564,
+        "n_evaluadas": 1043,
+        "n_clase_0": 268,
+        "n_clase_1": 775,
+        "matriz_confusion": {
+          "tn": 0,
+          "fp": 268,
+          "fn": 1,
+          "tp": 774
+        }
+      }
+    },
+    {
+      "model_name": "ResNet50",
+      "config_id": "do_0.5",
+      "grupo": "dropout",
+      "config": {
+        "learning_rate": 0.0001,
+        "dropout": 0.5,
+        "epochs": 3
+      },
+      "es_referencia": false,
+      "variante_de": [
+        "dropout"
+      ],
+      "epochs_ejecutadas": 3,
+      "early_stopping": false,
+      "learning_rate_final": 9.999999747378752e-05,
+      "segundos_entrenamiento": 683.8926210403442,
+      "checkpoint": "D:\\CIENCIA_DATOS\\Modulo_6\\Code\\proyecto-neumonia\\experiments\\sensibilidad_hiperparametros\\checkpoints\\resnet50\\do_0.5\\best_model.keras",
+      "validation": {
+        "accuracy": 0.7430488974113135,
+        "precision": 0.7430488974113135,
+        "recall": 1.0,
+        "specificity": 0.0,
+        "balanced_accuracy": 0.5,
+        "f1": 0.8525852585258525,
+        "roc_auc": 0.8803610977371209,
+        "n_evaluadas": 1043,
+        "n_clase_0": 268,
+        "n_clase_1": 775,
+        "matriz_confusion": {
+          "tn": 0,
+          "fp": 268,
+          "fn": 0,
+          "tp": 775
+        }
+      }
+    },
+    {
+      "model_name": "ResNet50",
+      "config_id": "ep_5",
+      "grupo": "epochs",
+      "config": {
+        "learning_rate": 0.0001,
+        "dropout": 0.3,
+        "epochs": 5
+      },
+      "es_referencia": false,
+      "variante_de": [
+        "epochs"
+      ],
+      "epochs_ejecutadas": 5,
+      "early_stopping": false,
+      "learning_rate_final": 9.999999747378752e-05,
+      "segundos_entrenamiento": 1143.804030418396,
+      "checkpoint": "D:\\CIENCIA_DATOS\\Modulo_6\\Code\\proyecto-neumonia\\experiments\\sensibilidad_hiperparametros\\checkpoints\\resnet50\\ep_5\\best_model.keras",
+      "validation": {
+        "accuracy": 0.7459252157238735,
+        "precision": 0.7519762845849802,
+        "recall": 0.9819354838709677,
+        "specificity": 0.06343283582089553,
+        "balanced_accuracy": 0.5226841598459316,
+        "f1": 0.8517067711247901,
+        "roc_auc": 0.8872363986519017,
+        "n_evaluadas": 1043,
+        "n_clase_0": 268,
+        "n_clase_1": 775,
+        "matriz_confusion": {
+          "tn": 17,
+          "fp": 251,
+          "fn": 14,
+          "tp": 761
+        }
+      }
+    },
+    {
+      "model_name": "ResNet50",
+      "config_id": "ep_10",
+      "grupo": "epochs",
+      "config": {
+        "learning_rate": 0.0001,
+        "dropout": 0.3,
+        "epochs": 10
+      },
+      "es_referencia": false,
+      "variante_de": [
+        "epochs"
+      ],
+      "epochs_ejecutadas": 10,
+      "early_stopping": false,
+      "learning_rate_final": 9.999999747378752e-05,
+      "segundos_entrenamiento": 2425.1503381729126,
+      "checkpoint": "D:\\CIENCIA_DATOS\\Modulo_6\\Code\\proyecto-neumonia\\experiments\\sensibilidad_hiperparametros\\checkpoints\\resnet50\\ep_10\\best_model.keras",
+      "validation": {
+        "accuracy": 0.8139980824544583,
+        "precision": 0.8275084554678692,
+        "recall": 0.9470967741935484,
+        "specificity": 0.4291044776119403,
+        "balanced_accuracy": 0.6881006259027443,
+        "f1": 0.8832731648616126,
+        "roc_auc": 0.8929369282619162,
+        "n_evaluadas": 1043,
+        "n_clase_0": 268,
+        "n_clase_1": 775,
+        "matriz_confusion": {
+          "tn": 115,
+          "fp": 153,
+          "fn": 41,
+          "tp": 734
+        }
+      }
+    },
+    {
+      "model_name": "MobileNetV2",
+      "config_id": "ref_lr1e-4_do0.3_ep3",
+      "grupo": "referencia",
+      "config": {
+        "learning_rate": 0.0001,
+        "dropout": 0.3,
+        "epochs": 3
+      },
+      "es_referencia": true,
+      "variante_de": [
+        "learning_rate",
+        "dropout",
+        "epochs"
+      ],
+      "epochs_ejecutadas": 3,
+      "early_stopping": false,
+      "learning_rate_final": 9.999999747378752e-05,
+      "segundos_entrenamiento": 296.6258337497711,
+      "checkpoint": "D:\\CIENCIA_DATOS\\Modulo_6\\Code\\proyecto-neumonia\\experiments\\sensibilidad_hiperparametros\\checkpoints\\mobilenetv2\\ref_lr1e-4_do0.3_ep3\\best_model.keras",
+      "validation": {
+        "accuracy": 0.9511025886864813,
+        "precision": 0.9713541666666666,
+        "recall": 0.9625806451612903,
+        "specificity": 0.917910447761194,
+        "balanced_accuracy": 0.9402455464612421,
+        "f1": 0.9669475048606611,
+        "roc_auc": 0.9889696677900818,
+        "n_evaluadas": 1043,
+        "n_clase_0": 268,
+        "n_clase_1": 775,
+        "matriz_confusion": {
+          "tn": 246,
+          "fp": 22,
+          "fn": 29,
+          "tp": 746
+        }
+      }
+    },
+    {
+      "model_name": "MobileNetV2",
+      "config_id": "lr_3e-4",
+      "grupo": "learning_rate",
+      "config": {
+        "learning_rate": 0.0003,
+        "dropout": 0.3,
+        "epochs": 3
+      },
+      "es_referencia": false,
+      "variante_de": [
+        "learning_rate"
+      ],
+      "epochs_ejecutadas": 3,
+      "early_stopping": false,
+      "learning_rate_final": 0.0003000000142492354,
+      "segundos_entrenamiento": 306.24075078964233,
+      "checkpoint": "D:\\CIENCIA_DATOS\\Modulo_6\\Code\\proyecto-neumonia\\experiments\\sensibilidad_hiperparametros\\checkpoints\\mobilenetv2\\lr_3e-4\\best_model.keras",
+      "validation": {
+        "accuracy": 0.959731543624161,
+        "precision": 0.9816031537450722,
+        "recall": 0.9638709677419355,
+        "specificity": 0.9477611940298507,
+        "balanced_accuracy": 0.9558160808858931,
+        "f1": 0.97265625,
+        "roc_auc": 0.9926480500722196,
+        "n_evaluadas": 1043,
+        "n_clase_0": 268,
+        "n_clase_1": 775,
+        "matriz_confusion": {
+          "tn": 254,
+          "fp": 14,
+          "fn": 28,
+          "tp": 747
+        }
+      }
+    },
+    {
+      "model_name": "MobileNetV2",
+      "config_id": "lr_1e-3",
+      "grupo": "learning_rate",
+      "config": {
+        "learning_rate": 0.001,
+        "dropout": 0.3,
+        "epochs": 3
+      },
+      "es_referencia": false,
+      "variante_de": [
+        "learning_rate"
+      ],
+      "epochs_ejecutadas": 3,
+      "early_stopping": false,
+      "learning_rate_final": 0.0010000000474974513,
+      "segundos_entrenamiento": 295.5909700393677,
+      "checkpoint": "D:\\CIENCIA_DATOS\\Modulo_6\\Code\\proyecto-neumonia\\experiments\\sensibilidad_hiperparametros\\checkpoints\\mobilenetv2\\lr_1e-3\\best_model.keras",
+      "validation": {
+        "accuracy": 0.9645254074784276,
+        "precision": 0.9817232375979112,
+        "recall": 0.9703225806451613,
+        "specificity": 0.9477611940298507,
+        "balanced_accuracy": 0.959041887337506,
+        "f1": 0.9759896171317326,
+        "roc_auc": 0.993644679826673,
+        "n_evaluadas": 1043,
+        "n_clase_0": 268,
+        "n_clase_1": 775,
+        "matriz_confusion": {
+          "tn": 254,
+          "fp": 14,
+          "fn": 23,
+          "tp": 752
+        }
+      }
+    },
+    {
+      "model_name": "MobileNetV2",
+      "config_id": "do_0.2",
+      "grupo": "dropout",
+      "config": {
+        "learning_rate": 0.0001,
+        "dropout": 0.2,
+        "epochs": 3
+      },
+      "es_referencia": false,
+      "variante_de": [
+        "dropout"
+      ],
+      "epochs_ejecutadas": 3,
+      "early_stopping": false,
+      "learning_rate_final": 9.999999747378752e-05,
+      "segundos_entrenamiento": 296.26049971580505,
+      "checkpoint": "D:\\CIENCIA_DATOS\\Modulo_6\\Code\\proyecto-neumonia\\experiments\\sensibilidad_hiperparametros\\checkpoints\\mobilenetv2\\do_0.2\\best_model.keras",
+      "validation": {
+        "accuracy": 0.9520613614573347,
+        "precision": 0.9750982961992136,
+        "recall": 0.96,
+        "specificity": 0.9291044776119403,
+        "balanced_accuracy": 0.9445522388059702,
+        "f1": 0.9674902470741222,
+        "roc_auc": 0.9893500240731825,
+        "n_evaluadas": 1043,
+        "n_clase_0": 268,
+        "n_clase_1": 775,
+        "matriz_confusion": {
+          "tn": 249,
+          "fp": 19,
+          "fn": 31,
+          "tp": 744
+        }
+      }
+    },
+    {
+      "model_name": "MobileNetV2",
+      "config_id": "do_0.5",
+      "grupo": "dropout",
+      "config": {
+        "learning_rate": 0.0001,
+        "dropout": 0.5,
+        "epochs": 3
+      },
+      "es_referencia": false,
+      "variante_de": [
+        "dropout"
+      ],
+      "epochs_ejecutadas": 3,
+      "early_stopping": false,
+      "learning_rate_final": 9.999999747378752e-05,
+      "segundos_entrenamiento": 297.51824593544006,
+      "checkpoint": "D:\\CIENCIA_DATOS\\Modulo_6\\Code\\proyecto-neumonia\\experiments\\sensibilidad_hiperparametros\\checkpoints\\mobilenetv2\\do_0.5\\best_model.keras",
+      "validation": {
+        "accuracy": 0.9520613614573347,
+        "precision": 0.9701686121919585,
+        "recall": 0.9651612903225807,
+        "specificity": 0.914179104477612,
+        "balanced_accuracy": 0.9396701974000963,
+        "f1": 0.9676584734799483,
+        "roc_auc": 0.9873952816562349,
+        "n_evaluadas": 1043,
+        "n_clase_0": 268,
+        "n_clase_1": 775,
+        "matriz_confusion": {
+          "tn": 245,
+          "fp": 23,
+          "fn": 27,
+          "tp": 748
+        }
+      }
+    },
+    {
+      "model_name": "MobileNetV2",
+      "config_id": "ep_5",
+      "grupo": "epochs",
+      "config": {
+        "learning_rate": 0.0001,
+        "dropout": 0.3,
+        "epochs": 5
+      },
+      "es_referencia": false,
+      "variante_de": [
+        "epochs"
+      ],
+      "epochs_ejecutadas": 5,
+      "early_stopping": false,
+      "learning_rate_final": 9.999999747378752e-05,
+      "segundos_entrenamiento": 486.89830589294434,
+      "checkpoint": "D:\\CIENCIA_DATOS\\Modulo_6\\Code\\proyecto-neumonia\\experiments\\sensibilidad_hiperparametros\\checkpoints\\mobilenetv2\\ep_5\\best_model.keras",
+      "validation": {
+        "accuracy": 0.9578139980824545,
+        "precision": 0.9656050955414013,
+        "recall": 0.9780645161290322,
+        "specificity": 0.8992537313432836,
+        "balanced_accuracy": 0.9386591237361579,
+        "f1": 0.9717948717948718,
+        "roc_auc": 0.9907221954742417,
+        "n_evaluadas": 1043,
+        "n_clase_0": 268,
+        "n_clase_1": 775,
+        "matriz_confusion": {
+          "tn": 241,
+          "fp": 27,
+          "fn": 17,
+          "tp": 758
+        }
+      }
+    },
+    {
+      "model_name": "MobileNetV2",
+      "config_id": "ep_10",
+      "grupo": "epochs",
+      "config": {
+        "learning_rate": 0.0001,
+        "dropout": 0.3,
+        "epochs": 10
+      },
+      "es_referencia": false,
+      "variante_de": [
+        "epochs"
+      ],
+      "epochs_ejecutadas": 10,
+      "early_stopping": false,
+      "learning_rate_final": 9.999999747378752e-05,
+      "segundos_entrenamiento": 949.4430408477783,
+      "checkpoint": "D:\\CIENCIA_DATOS\\Modulo_6\\Code\\proyecto-neumonia\\experiments\\sensibilidad_hiperparametros\\checkpoints\\mobilenetv2\\ep_10\\best_model.keras",
+      "validation": {
+        "accuracy": 0.965484180249281,
+        "precision": 0.9780077619663649,
+        "recall": 0.9754838709677419,
+        "specificity": 0.9365671641791045,
+        "balanced_accuracy": 0.9560255175734231,
+        "f1": 0.9767441860465116,
+        "roc_auc": 0.9939576311988445,
+        "n_evaluadas": 1043,
+        "n_clase_0": 268,
+        "n_clase_1": 775,
+        "matriz_confusion": {
+          "tn": 251,
+          "fp": 17,
+          "fn": 19,
+          "tp": 756
+        }
+      }
+    }
+  ],
+  "mejor_por_arquitectura": {
+    "ResNet50": {
+      "config_id": "lr_1e-3",
+      "grupo": "learning_rate",
+      "config": {
+        "learning_rate": 0.001,
+        "dropout": 0.3,
+        "epochs": 3
+      },
+      "validation": {
+        "accuracy": 0.822627037392138,
+        "precision": 0.8571428571428571,
+        "recall": 0.9135483870967742,
+        "specificity": 0.5597014925373134,
+        "balanced_accuracy": 0.7366249398170438,
+        "f1": 0.8844472204871955,
+        "roc_auc": 0.8930669234472799,
+        "n_evaluadas": 1043,
+        "n_clase_0": 268,
+        "n_clase_1": 775,
+        "matriz_confusion": {
+          "tn": 150,
+          "fp": 118,
+          "fn": 67,
+          "tp": 708
+        }
+      },
+      "delta_balanced_accuracy_vs_referencia": 0.2366249398170438,
+      "referencia_original": {
+        "config_id": "ref_lr1e-4_do0.3_ep3",
+        "config": {
+          "learning_rate": 0.0001,
+          "dropout": 0.3,
+          "epochs": 3
+        },
+        "validation": {
+          "accuracy": 0.7430488974113135,
+          "precision": 0.7430488974113135,
+          "recall": 1.0,
+          "specificity": 0.0,
+          "balanced_accuracy": 0.5,
+          "f1": 0.8525852585258525,
+          "roc_auc": 0.8832932113625422,
+          "n_evaluadas": 1043,
+          "n_clase_0": 268,
+          "n_clase_1": 775,
+          "matriz_confusion": {
+            "tn": 0,
+            "fp": 268,
+            "fn": 0,
+            "tp": 775
+          }
+        }
+      },
+      "tabla_ordenada": [
+        {
+          "config_id": "lr_1e-3",
+          "grupo": "learning_rate",
+          "config": {
+            "learning_rate": 0.001,
+            "dropout": 0.3,
+            "epochs": 3
+          },
+          "accuracy": 0.822627037392138,
+          "precision": 0.8571428571428571,
+          "recall": 0.9135483870967742,
+          "specificity": 0.5597014925373134,
+          "balanced_accuracy": 0.7366249398170438,
+          "f1": 0.8844472204871955,
+          "roc_auc": 0.8930669234472799
+        },
+        {
+          "config_id": "ep_10",
+          "grupo": "epochs",
+          "config": {
+            "learning_rate": 0.0001,
+            "dropout": 0.3,
+            "epochs": 10
+          },
+          "accuracy": 0.8139980824544583,
+          "precision": 0.8275084554678692,
+          "recall": 0.9470967741935484,
+          "specificity": 0.4291044776119403,
+          "balanced_accuracy": 0.6881006259027443,
+          "f1": 0.8832731648616126,
+          "roc_auc": 0.8929369282619162
+        },
+        {
+          "config_id": "lr_3e-4",
+          "grupo": "learning_rate",
+          "config": {
+            "learning_rate": 0.0003,
+            "dropout": 0.3,
+            "epochs": 3
+          },
+          "accuracy": 0.8072866730584851,
+          "precision": 0.8174778761061947,
+          "recall": 0.9535483870967741,
+          "specificity": 0.3843283582089552,
+          "balanced_accuracy": 0.6689383726528647,
+          "f1": 0.8802858844550328,
+          "roc_auc": 0.8893837265286471
+        },
+        {
+          "config_id": "ep_5",
+          "grupo": "epochs",
+          "config": {
+            "learning_rate": 0.0001,
+            "dropout": 0.3,
+            "epochs": 5
+          },
+          "accuracy": 0.7459252157238735,
+          "precision": 0.7519762845849802,
+          "recall": 0.9819354838709677,
+          "specificity": 0.06343283582089553,
+          "balanced_accuracy": 0.5226841598459316,
+          "f1": 0.8517067711247901,
+          "roc_auc": 0.8872363986519017
+        },
+        {
+          "config_id": "ref_lr1e-4_do0.3_ep3",
+          "grupo": "referencia",
+          "config": {
+            "learning_rate": 0.0001,
+            "dropout": 0.3,
+            "epochs": 3
+          },
+          "accuracy": 0.7430488974113135,
+          "precision": 0.7430488974113135,
+          "recall": 1.0,
+          "specificity": 0.0,
+          "balanced_accuracy": 0.5,
+          "f1": 0.8525852585258525,
+          "roc_auc": 0.8832932113625422
+        },
+        {
+          "config_id": "do_0.5",
+          "grupo": "dropout",
+          "config": {
+            "learning_rate": 0.0001,
+            "dropout": 0.5,
+            "epochs": 3
+          },
+          "accuracy": 0.7430488974113135,
+          "precision": 0.7430488974113135,
+          "recall": 1.0,
+          "specificity": 0.0,
+          "balanced_accuracy": 0.5,
+          "f1": 0.8525852585258525,
+          "roc_auc": 0.8803610977371209
+        },
+        {
+          "config_id": "do_0.2",
+          "grupo": "dropout",
+          "config": {
+            "learning_rate": 0.0001,
+            "dropout": 0.2,
+            "epochs": 3
+          },
+          "accuracy": 0.7420901246404602,
+          "precision": 0.7428023032629558,
+          "recall": 0.9987096774193548,
+          "specificity": 0.0,
+          "balanced_accuracy": 0.4993548387096774,
+          "f1": 0.8519537699504678,
+          "roc_auc": 0.8842320654790564
+        }
+      ]
+    },
+    "MobileNetV2": {
+      "config_id": "lr_1e-3",
+      "grupo": "learning_rate",
+      "config": {
+        "learning_rate": 0.001,
+        "dropout": 0.3,
+        "epochs": 3
+      },
+      "validation": {
+        "accuracy": 0.9645254074784276,
+        "precision": 0.9817232375979112,
+        "recall": 0.9703225806451613,
+        "specificity": 0.9477611940298507,
+        "balanced_accuracy": 0.959041887337506,
+        "f1": 0.9759896171317326,
+        "roc_auc": 0.993644679826673,
+        "n_evaluadas": 1043,
+        "n_clase_0": 268,
+        "n_clase_1": 775,
+        "matriz_confusion": {
+          "tn": 254,
+          "fp": 14,
+          "fn": 23,
+          "tp": 752
+        }
+      },
+      "delta_balanced_accuracy_vs_referencia": 0.018796340876263806,
+      "referencia_original": {
+        "config_id": "ref_lr1e-4_do0.3_ep3",
+        "config": {
+          "learning_rate": 0.0001,
+          "dropout": 0.3,
+          "epochs": 3
+        },
+        "validation": {
+          "accuracy": 0.9511025886864813,
+          "precision": 0.9713541666666666,
+          "recall": 0.9625806451612903,
+          "specificity": 0.917910447761194,
+          "balanced_accuracy": 0.9402455464612421,
+          "f1": 0.9669475048606611,
+          "roc_auc": 0.9889696677900818,
+          "n_evaluadas": 1043,
+          "n_clase_0": 268,
+          "n_clase_1": 775,
+          "matriz_confusion": {
+            "tn": 246,
+            "fp": 22,
+            "fn": 29,
+            "tp": 746
+          }
+        }
+      },
+      "tabla_ordenada": [
+        {
+          "config_id": "lr_1e-3",
+          "grupo": "learning_rate",
+          "config": {
+            "learning_rate": 0.001,
+            "dropout": 0.3,
+            "epochs": 3
+          },
+          "accuracy": 0.9645254074784276,
+          "precision": 0.9817232375979112,
+          "recall": 0.9703225806451613,
+          "specificity": 0.9477611940298507,
+          "balanced_accuracy": 0.959041887337506,
+          "f1": 0.9759896171317326,
+          "roc_auc": 0.993644679826673
+        },
+        {
+          "config_id": "ep_10",
+          "grupo": "epochs",
+          "config": {
+            "learning_rate": 0.0001,
+            "dropout": 0.3,
+            "epochs": 10
+          },
+          "accuracy": 0.965484180249281,
+          "precision": 0.9780077619663649,
+          "recall": 0.9754838709677419,
+          "specificity": 0.9365671641791045,
+          "balanced_accuracy": 0.9560255175734231,
+          "f1": 0.9767441860465116,
+          "roc_auc": 0.9939576311988445
+        },
+        {
+          "config_id": "lr_3e-4",
+          "grupo": "learning_rate",
+          "config": {
+            "learning_rate": 0.0003,
+            "dropout": 0.3,
+            "epochs": 3
+          },
+          "accuracy": 0.959731543624161,
+          "precision": 0.9816031537450722,
+          "recall": 0.9638709677419355,
+          "specificity": 0.9477611940298507,
+          "balanced_accuracy": 0.9558160808858931,
+          "f1": 0.97265625,
+          "roc_auc": 0.9926480500722196
+        },
+        {
+          "config_id": "do_0.2",
+          "grupo": "dropout",
+          "config": {
+            "learning_rate": 0.0001,
+            "dropout": 0.2,
+            "epochs": 3
+          },
+          "accuracy": 0.9520613614573347,
+          "precision": 0.9750982961992136,
+          "recall": 0.96,
+          "specificity": 0.9291044776119403,
+          "balanced_accuracy": 0.9445522388059702,
+          "f1": 0.9674902470741222,
+          "roc_auc": 0.9893500240731825
+        },
+        {
+          "config_id": "ref_lr1e-4_do0.3_ep3",
+          "grupo": "referencia",
+          "config": {
+            "learning_rate": 0.0001,
+            "dropout": 0.3,
+            "epochs": 3
+          },
+          "accuracy": 0.9511025886864813,
+          "precision": 0.9713541666666666,
+          "recall": 0.9625806451612903,
+          "specificity": 0.917910447761194,
+          "balanced_accuracy": 0.9402455464612421,
+          "f1": 0.9669475048606611,
+          "roc_auc": 0.9889696677900818
+        },
+        {
+          "config_id": "do_0.5",
+          "grupo": "dropout",
+          "config": {
+            "learning_rate": 0.0001,
+            "dropout": 0.5,
+            "epochs": 3
+          },
+          "accuracy": 0.9520613614573347,
+          "precision": 0.9701686121919585,
+          "recall": 0.9651612903225807,
+          "specificity": 0.914179104477612,
+          "balanced_accuracy": 0.9396701974000963,
+          "f1": 0.9676584734799483,
+          "roc_auc": 0.9873952816562349
+        },
+        {
+          "config_id": "ep_5",
+          "grupo": "epochs",
+          "config": {
+            "learning_rate": 0.0001,
+            "dropout": 0.3,
+            "epochs": 5
+          },
+          "accuracy": 0.9578139980824545,
+          "precision": 0.9656050955414013,
+          "recall": 0.9780645161290322,
+          "specificity": 0.8992537313432836,
+          "balanced_accuracy": 0.9386591237361579,
+          "f1": 0.9717948717948718,
+          "roc_auc": 0.9907221954742417
+        }
+      ]
+    },
+    "VGG16": {
+      "config_id": "lr_1e-3",
+      "grupo": "learning_rate",
+      "config": {
+        "learning_rate": 0.001,
+        "dropout": 0.3,
+        "epochs": 3
+      },
+      "validation": {
+        "accuracy": 0.925215723873442,
+        "precision": 0.9887798036465638,
+        "recall": 0.9096774193548387,
+        "specificity": 0.9701492537313433,
+        "balanced_accuracy": 0.939913336543091,
+        "f1": 0.9475806451612904,
+        "roc_auc": 0.9850312951372172,
+        "n_evaluadas": 1043,
+        "n_clase_0": 268,
+        "n_clase_1": 775,
+        "matriz_confusion": {
+          "tn": 260,
+          "fp": 8,
+          "fn": 70,
+          "tp": 705
+        }
+      },
+      "delta_balanced_accuracy_vs_referencia": 0.06402503610977361,
+      "referencia_original": {
+        "config_id": "ref_lr1e-4_do0.3_ep3",
+        "config": {
+          "learning_rate": 0.0001,
+          "dropout": 0.3,
+          "epochs": 3
+        },
+        "validation": {
+          "accuracy": 0.909875359539789,
+          "precision": 0.9337579617834395,
+          "recall": 0.9458064516129032,
+          "specificity": 0.8059701492537313,
+          "balanced_accuracy": 0.8758883004333173,
+          "f1": 0.9397435897435897,
+          "roc_auc": 0.9642994703899856,
+          "n_evaluadas": 1043,
+          "n_clase_0": 268,
+          "n_clase_1": 775,
+          "matriz_confusion": {
+            "tn": 216,
+            "fp": 52,
+            "fn": 42,
+            "tp": 733
+          }
+        }
+      },
+      "tabla_ordenada": [
+        {
+          "config_id": "lr_1e-3",
+          "grupo": "learning_rate",
+          "config": {
+            "learning_rate": 0.001,
+            "dropout": 0.3,
+            "epochs": 3
+          },
+          "accuracy": 0.925215723873442,
+          "precision": 0.9887798036465638,
+          "recall": 0.9096774193548387,
+          "specificity": 0.9701492537313433,
+          "balanced_accuracy": 0.939913336543091,
+          "f1": 0.9475806451612904,
+          "roc_auc": 0.9850312951372172
+        },
+        {
+          "config_id": "lr_3e-4",
+          "grupo": "learning_rate",
+          "config": {
+            "learning_rate": 0.0003,
+            "dropout": 0.3,
+            "epochs": 3
+          },
+          "accuracy": 0.9261744966442953,
+          "precision": 0.9780821917808219,
+          "recall": 0.9212903225806451,
+          "specificity": 0.9402985074626866,
+          "balanced_accuracy": 0.9307944150216658,
+          "f1": 0.9488372093023256,
+          "roc_auc": 0.975835339431873
+        },
+        {
+          "config_id": "ep_10",
+          "grupo": "epochs",
+          "config": {
+            "learning_rate": 0.0001,
+            "dropout": 0.3,
+            "epochs": 10
+          },
+          "accuracy": 0.9290508149568553,
+          "precision": 0.9704697986577181,
+          "recall": 0.9329032258064516,
+          "specificity": 0.917910447761194,
+          "balanced_accuracy": 0.9254068367838229,
+          "f1": 0.9513157894736842,
+          "roc_auc": 0.976793452094367
+        },
+        {
+          "config_id": "ep_5",
+          "grupo": "epochs",
+          "config": {
+            "learning_rate": 0.0001,
+            "dropout": 0.3,
+            "epochs": 5
+          },
+          "accuracy": 0.9194630872483222,
+          "precision": 0.9700680272108844,
+          "recall": 0.92,
+          "specificity": 0.917910447761194,
+          "balanced_accuracy": 0.918955223880597,
+          "f1": 0.9443708609271523,
+          "roc_auc": 0.9700048146364951
+        },
+        {
+          "config_id": "do_0.2",
+          "grupo": "dropout",
+          "config": {
+            "learning_rate": 0.0001,
+            "dropout": 0.2,
+            "epochs": 3
+          },
+          "accuracy": 0.9117929050814957,
+          "precision": 0.9372599231754162,
+          "recall": 0.944516129032258,
+          "specificity": 0.8171641791044776,
+          "balanced_accuracy": 0.8808401540683678,
+          "f1": 0.9408740359897172,
+          "roc_auc": 0.9647857486759748
+        },
+        {
+          "config_id": "ref_lr1e-4_do0.3_ep3",
+          "grupo": "referencia",
+          "config": {
+            "learning_rate": 0.0001,
+            "dropout": 0.3,
+            "epochs": 3
+          },
+          "accuracy": 0.909875359539789,
+          "precision": 0.9337579617834395,
+          "recall": 0.9458064516129032,
+          "specificity": 0.8059701492537313,
+          "balanced_accuracy": 0.8758883004333173,
+          "f1": 0.9397435897435897,
+          "roc_auc": 0.9642994703899856
+        },
+        {
+          "config_id": "do_0.5",
+          "grupo": "dropout",
+          "config": {
+            "learning_rate": 0.0001,
+            "dropout": 0.5,
+            "epochs": 3
+          },
+          "accuracy": 0.900287631831256,
+          "precision": 0.9167701863354037,
+          "recall": 0.952258064516129,
+          "specificity": 0.75,
+          "balanced_accuracy": 0.8511290322580645,
+          "f1": 0.9341772151898734,
+          "roc_auc": 0.963389504092441
+        }
+      ]
+    }
+  },
+  "comparacion_modelos": {
+    "winner": {
+      "model_name": "MobileNetV2",
+      "config_id": "lr_1e-3",
+      "learning_rate": 0.001,
+      "dropout": 0.3,
+      "epochs": 3,
+      "origen": "sensibilidad",
+      "accuracy": 0.9645254074784276,
+      "precision": 0.9817232375979112,
+      "recall": 0.9703225806451613,
+      "specificity": 0.9477611940298507,
+      "balanced_accuracy": 0.959041887337506,
+      "f1": 0.9759896171317326,
+      "roc_auc": 0.993644679826673,
+      "confusion_matrix": [
+        [
+          254,
+          14
+        ],
+        [
+          23,
+          752
+        ]
+      ]
+    },
+    "results": [
+      {
+        "model_name": "MobileNetV2",
+        "config_id": "lr_1e-3",
+        "learning_rate": 0.001,
+        "dropout": 0.3,
+        "epochs": 3,
+        "origen": "sensibilidad",
+        "accuracy": 0.9645254074784276,
+        "precision": 0.9817232375979112,
+        "recall": 0.9703225806451613,
+        "specificity": 0.9477611940298507,
+        "balanced_accuracy": 0.959041887337506,
+        "f1": 0.9759896171317326,
+        "roc_auc": 0.993644679826673,
+        "confusion_matrix": [
+          [
+            254,
+            14
+          ],
+          [
+            23,
+            752
+          ]
+        ]
+      },
+      {
+        "model_name": "VGG16",
+        "config_id": "lr_1e-3",
+        "learning_rate": 0.001,
+        "dropout": 0.3,
+        "epochs": 3,
+        "origen": "sensibilidad",
+        "accuracy": 0.925215723873442,
+        "precision": 0.9887798036465638,
+        "recall": 0.9096774193548387,
+        "specificity": 0.9701492537313433,
+        "balanced_accuracy": 0.939913336543091,
+        "f1": 0.9475806451612904,
+        "roc_auc": 0.9850312951372172,
+        "confusion_matrix": [
+          [
+            260,
+            8
+          ],
+          [
+            70,
+            705
+          ]
+        ]
+      },
+      {
+        "model_name": "ResNet50",
+        "config_id": "lr_1e-3",
+        "learning_rate": 0.001,
+        "dropout": 0.3,
+        "epochs": 3,
+        "origen": "sensibilidad",
+        "accuracy": 0.822627037392138,
+        "precision": 0.8571428571428571,
+        "recall": 0.9135483870967742,
+        "specificity": 0.5597014925373134,
+        "balanced_accuracy": 0.7366249398170438,
+        "f1": 0.8844472204871955,
+        "roc_auc": 0.8930669234472799,
+        "confusion_matrix": [
+          [
+            150,
+            118
+          ],
+          [
+            67,
+            708
+          ]
+        ]
+      }
+    ]
+  },
+  "ganador_global": {
+    "model_name": "MobileNetV2",
+    "config_id": "lr_1e-3",
+    "config": {
+      "learning_rate": 0.001,
+      "dropout": 0.3,
+      "epochs": 3
+    },
+    "criterio_seleccion": [
+      "balanced_accuracy",
+      "roc_auc",
+      "f1",
+      "accuracy"
+    ],
+    "validation": {
+      "balanced_accuracy": 0.959041887337506,
+      "roc_auc": 0.993644679826673,
+      "f1": 0.9759896171317326,
+      "accuracy": 0.9645254074784276
+    }
+  },
+  "segundos_totales": 99.72712016105652,
+  "finalizado": "2026-09-26T11:30:57.702917+00:00"
+}

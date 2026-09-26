@@ -1,0 +1,142 @@
+{
+  "descripcion": "Auditoria de TEST del modelo ganador de la sensibilidad. Etapa posterior e independiente: no forma parte de models/sensitivity_results.json y no interviene en la seleccion.",
+  "split_manifest": "D:\\CIENCIA_DATOS\\Modulo_6\\Code\\proyecto-neumonia\\data\\interim\\stratified_split_train80_val20_test_original.csv",
+  "n_test": 624,
+  "clases_test": {
+    "NORMAL": 234,
+    "PNEUMONIA": 390
+  },
+  "seleccion_por_arquitectura": {
+    "VGG16": "lr_1e-3",
+    "ResNet50": "lr_1e-3",
+    "MobileNetV2": "lr_1e-3"
+  },
+  "ganador_global": {
+    "model_name": "MobileNetV2",
+    "config_id": "lr_1e-3",
+    "config": {
+      "learning_rate": 0.001,
+      "dropout": 0.3,
+      "epochs": 3
+    },
+    "criterio_seleccion": [
+      "balanced_accuracy",
+      "roc_auc",
+      "f1",
+      "accuracy"
+    ],
+    "validation": {
+      "balanced_accuracy": 0.959041887337506,
+      "roc_auc": 0.993644679826673,
+      "f1": 0.9759896171317326,
+      "accuracy": 0.9645254074784276
+    }
+  },
+  "modelos": {
+    "VGG16": {
+      "config_id": "lr_1e-3",
+      "config": {
+        "learning_rate": 0.001,
+        "dropout": 0.3,
+        "epochs_max": 3
+      },
+      "estado": "completado",
+      "test": {
+        "accuracy": 0.8862179487179487,
+        "precision": 0.8717948717948718,
+        "recall": 0.958974358974359,
+        "specificity": 0.7649572649572649,
+        "balanced_accuracy": 0.861965811965812,
+        "f1": 0.9133089133089133,
+        "roc_auc": 0.946898969975893,
+        "n_evaluadas": 624,
+        "n_clase_0": 234,
+        "n_clase_1": 390,
+        "matriz_confusion": {
+          "tn": 179,
+          "fp": 55,
+          "fn": 16,
+          "tp": 374
+        }
+      }
+    },
+    "ResNet50": {
+      "config_id": "lr_1e-3",
+      "config": {
+        "learning_rate": 0.001,
+        "dropout": 0.3,
+        "epochs_max": 3
+      },
+      "estado": "completado",
+      "test": {
+        "accuracy": 0.7227564102564102,
+        "precision": 0.716566866267465,
+        "recall": 0.9205128205128205,
+        "specificity": 0.39316239316239315,
+        "balanced_accuracy": 0.6568376068376068,
+        "f1": 0.8058361391694725,
+        "roc_auc": 0.8432281393819856,
+        "n_evaluadas": 624,
+        "n_clase_0": 234,
+        "n_clase_1": 390,
+        "matriz_confusion": {
+          "tn": 92,
+          "fp": 142,
+          "fn": 31,
+          "tp": 359
+        }
+      }
+    },
+    "MobileNetV2": {
+      "config_id": "lr_1e-3",
+      "config": {
+        "learning_rate": 0.001,
+        "dropout": 0.3,
+        "epochs_max": 3
+      },
+      "estado": "completado",
+      "test": {
+        "accuracy": 0.8413461538461539,
+        "precision": 0.8037578288100209,
+        "recall": 0.9871794871794872,
+        "specificity": 0.5982905982905983,
+        "balanced_accuracy": 0.7927350427350428,
+        "f1": 0.8860759493670886,
+        "roc_auc": 0.9611549419241727,
+        "n_evaluadas": 624,
+        "n_clase_0": 234,
+        "n_clase_1": 390,
+        "matriz_confusion": {
+          "tn": 140,
+          "fp": 94,
+          "fn": 5,
+          "tp": 385
+        }
+      }
+    }
+  },
+  "test_del_ganador": {
+    "accuracy": 0.8413461538461539,
+    "precision": 0.8037578288100209,
+    "recall": 0.9871794871794872,
+    "specificity": 0.5982905982905983,
+    "balanced_accuracy": 0.7927350427350428,
+    "f1": 0.8860759493670886,
+    "roc_auc": 0.9611549419241727,
+    "n_evaluadas": 624,
+    "n_clase_0": 234,
+    "n_clase_1": 390,
+    "matriz_confusion": {
+      "tn": 140,
+      "fp": 94,
+      "fn": 5,
+      "tp": 385
+    }
+  },
+  "procedencia": {
+    "tipo": "auditoria_ya_medida",
+    "archivo_origen": "experiments\\sensibilidad_hiperparametros\\resultados\\auditoria_test.json",
+    "sha256_origen": "db33f40f9fb244b6ae3f6a2a8d76e11c57a715c7f59d404fcd1ea3af3f4bc821"
+  },
+  "finalizado": "2026-09-26T11:30:57.736919+00:00"
+}
