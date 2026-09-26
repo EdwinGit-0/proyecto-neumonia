@@ -1,0 +1,72 @@
+{
+  "id": "finetune_block13",
+  "grupo": "fine_tuning",
+  "descripcion": "Descongelar block_13_expand (indice 116, 38 capas, el del tuning antiguo)",
+  "config": {
+    "learning_rate": 0.001,
+    "dropout": 0.3,
+    "epochs": 3
+  },
+  "tratamiento": "ninguno",
+  "fine_tune_from": 116,
+  "indice_capa": "block_13_expand",
+  "entrenado_en_esta_etapa": true,
+  "procedencia": {
+    "tipo": "entrenado_en_esta_etapa",
+    "nota": "Sin acceso a test."
+  },
+  "train": {},
+  "class_weight": null,
+  "capas_entrenables": 42,
+  "capas_totales": 158,
+  "epochs_ejecutadas": 3,
+  "early_stopping": false,
+  "learning_rate_final": 0.0010000000474974513,
+  "segundos_entrenamiento": 319.3021836280823,
+  "checkpoint": "experiments\\optimizacion_pendiente_mobilenetv2\\checkpoints\\finetune_block13\\best_model.keras",
+  "history": {
+    "loss": [
+      0.1639324426651001,
+      0.10877256095409393,
+      0.08239027112722397
+    ],
+    "accuracy": [
+      0.9412892460823059,
+      0.9597411751747131,
+      0.969566285610199
+    ],
+    "val_loss": [
+      3.269257068634033,
+      6.01250696182251,
+      0.520271897315979
+    ],
+    "val_accuracy": [
+      0.743048906326294,
+      0.743048906326294,
+      0.9079577922821045
+    ],
+    "lr": [
+      0.0010000000474974513,
+      0.0010000000474974513,
+      0.0010000000474974513
+    ]
+  },
+  "validation": {
+    "accuracy": 0.9079578139980825,
+    "precision": 0.8906789413118527,
+    "recall": 0.9987096774193548,
+    "specificity": 0.6455223880597015,
+    "balanced_accuracy": 0.8221160327395282,
+    "f1": 0.9416058394160584,
+    "roc_auc": 0.9923302840635532,
+    "n_evaluadas": 1043,
+    "n_clase_0": 268,
+    "n_clase_1": 775,
+    "matriz_confusion": {
+      "tn": 173,
+      "fp": 95,
+      "fn": 1,
+      "tp": 774
+    }
+  }
+}
