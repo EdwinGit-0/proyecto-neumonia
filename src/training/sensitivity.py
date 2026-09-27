@@ -55,8 +55,8 @@ from src.models.comparison import construir_tabla_resultados
 from src.models.evaluation import calcular_matriz_confusion, calcular_reporte_metricas, seleccionar_mejor_modelo
 from src.training.run_real_training import construir_pipeline_augmentation
 from src.utils.paths import DIRECTORIO_DATOS, DIRECTORIO_MODELOS, RAIZ_PROYECTO, asegurar_directorio
+from src.utils.reproducibility import SEMILLA, configurar_reproducibilidad, reiniciar_semilla
 
-SEMILLA = 42
 TAMANO_IMAGEN = (224, 224)
 TAMANO_LOTE = 16
 
@@ -507,7 +507,7 @@ def _ejecutar_configuracion(
           f"lr={config['learning_rate']} dropout={config['dropout']} epochs={config['epochs']}", flush=True)
 
     tf.keras.backend.clear_session()
-    tf.keras.utils.set_random_seed(SEMILLA)
+    reiniciar_semilla(SEMILLA)
     inicio = time.time()
     model = construir_modelo_sensibilidad(
         model_name=model_name,
@@ -557,15 +557,22 @@ def _ejecutar_configuracion(
 
 def ejecutar_barrido_sensibilidad() -> dict[str, Any]:
     """Ejecutar los 21 entrenamientos de la etapa y construir el artefacto."""
+    configurar_reproducibilidad(SEMILLA)
     configuraciones = construir_configuraciones()
     inicio_total = time.time()
     resultados: list[dict[str, Any]] = []
 
     for model_name in NOMBRES_MODELOS:
-        pipelines = crear_pipelines_sensibilidad()
         for config in configuraciones:
+            # El pipeline se construye despues de reiniciar la semilla, de modo que
+            # cada configuracion ve el mismo orden de ejemplos y la misma secuencia
+            # de augmentation y el unico factor que cambia es el evaluado.
+            tf.keras.backend.clear_session()
+            reiniciar_semilla(SEMILLA)
+            pipelines = crear_pipelines_sensibilidad()
             resultados.append(_ejecutar_configuracion(model_name, config, pipelines))
-        del pipelines
+            del pipelines
+        tf.keras.backend.clear_session()
 
     return construir_payload_sensibilidad(
         resultados,

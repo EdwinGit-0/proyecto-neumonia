@@ -1,0 +1,75 @@
+{
+  "id": "class_weight",
+  "grupo": "desbalance",
+  "descripcion": "Pesos de clase balanceados calculados sobre train",
+  "config": {
+    "learning_rate": 0.001,
+    "dropout": 0.3,
+    "epochs": 3
+  },
+  "tratamiento": "class_weight",
+  "fine_tune_from": null,
+  "capa_descongelada": null,
+  "capas_entrenables": 4,
+  "capas_totales": 158,
+  "train": {
+    "class_weight": {
+      "0": 1.9445479962721341,
+      "1": 0.6730645161290323
+    }
+  },
+  "class_weight": {
+    "0": 1.9445479962721341,
+    "1": 0.6730645161290323
+  },
+  "epochs_ejecutadas": 3,
+  "early_stopping": false,
+  "learning_rate_final": 0.0010000000474974513,
+  "segundos_entrenamiento": 369.31414771080017,
+  "checkpoint": "models\\mobilenetv2_optimizacion\\class_weight\\best_model.keras",
+  "history": {
+    "loss": [
+      0.19577115774154663,
+      0.14678940176963806,
+      0.1259055882692337
+    ],
+    "accuracy": [
+      0.9192427396774292,
+      0.9412892460823059,
+      0.9527917504310608
+    ],
+    "val_loss": [
+      0.1320073902606964,
+      0.10032420605421066,
+      0.2344265878200531
+    ],
+    "val_accuracy": [
+      0.9415148496627808,
+      0.9626078605651855,
+      0.9050815105438232
+    ],
+    "lr": [
+      0.0010000000474974513,
+      0.0010000000474974513,
+      0.0010000000474974513
+    ]
+  },
+  "validation": {
+    "accuracy": 0.962607861936721,
+    "precision": 0.9842105263157894,
+    "recall": 0.9651612903225807,
+    "specificity": 0.9552238805970149,
+    "balanced_accuracy": 0.9601925854597978,
+    "f1": 0.9745928338762215,
+    "roc_auc": 0.993124699085219,
+    "n_evaluadas": 1043,
+    "n_clase_0": 268,
+    "n_clase_1": 775,
+    "matriz_confusion": {
+      "tn": 256,
+      "fp": 12,
+      "fn": 27,
+      "tp": 748
+    }
+  }
+}

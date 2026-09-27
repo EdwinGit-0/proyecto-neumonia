@@ -133,86 +133,60 @@ def test_la_seleccion_ignora_el_test_evenente_que_exista() -> None:
     assert seleccion["VGG16"]["config_id"] == "ref_lr1e-4_do0.3_ep3"
 
 
-def test_la_comparacion_de_model_results_usa_la_sensibilidad(payload: dict[str, Any]) -> None:
+def test_la_comparacion_de_arquitecturas_coincide_con_el_ganador_de_sensibilidad(
+    payload: dict[str, Any],
+) -> None:
+    """La arquitectura seleccionada en la etapa base es la que gana la sensibilidad."""
     resultados = json.loads(RUTA_RESULTADOS_ENTRENAMIENTO.read_text(encoding="utf-8"))
     comparacion = resultados["validation_comparison"]
-    assert comparacion["winner"]["model_name"] == payload["ganador_global"]["model_name"]
-    assert comparacion["winner"]["config_id"] == payload["ganador_global"]["config_id"]
-    assert all(item["origen"] == "sensibilidad" for item in comparacion["results"])
-
-    historica = resultados["validation_comparison_configuracion_base"]
-    assert historica["winner"]["model_name"] == "MobileNetV2"
-    assert historica["winner"]["balanced_accuracy"] == pytest.approx(0.9412, abs=5e-4)
-    assert resultados["sensibilidad"]["test_utilizado_en_sensibilidad"] is False
-    assert resultados["final_test"]["model_name"] == "MobileNetV2"
+    assert comparacion["winner"]["model_name"] == payload["ganador_global"]["model_name"] == "MobileNetV2"
+    assert {item["model_name"] for item in comparacion["results"]} == set(NOMBRES_MODELOS)
 
 
-def test_la_optimizacion_de_mobilenetv2_parte_del_ganador_de_sensibilidad(payload: dict[str, Any]) -> None:
-    from src.training.tuning_mobilenetv2 import construir_experimentos, construir_punto_de_partida
+def test_la_optimizacion_parte_del_ganador_de_sensibilidad(payload: dict[str, Any]) -> None:
+    """El flujo vigente no vuelve a buscar lr, dropout ni epochs: parte del ganador de sensibilidad."""
+    from src.training.optimizacion_mobilenetv2 import construir_variantes
 
-    punto_de_partida = construir_punto_de_partida()
-    assert punto_de_partida["origen"] == "sensibilidad"
+    punto_de_partida = cargar_punto_de_partida_sensibilidad()
+    assert punto_de_partida["origen"] == str(RUTA_RESULTADOS)
     assert punto_de_partida["model_name"] == payload["ganador_global"]["model_name"] == "MobileNetV2"
     assert punto_de_partida["config_id"] == payload["ganador_global"]["config_id"] == "lr_1e-3"
     assert punto_de_partida["config"]["learning_rate"] == 1e-3
 
-    experimentos = construir_experimentos(punto_de_partida)
-    assert {experimento["nombre"] for experimento in experimentos} == {
-        "lr_5e-5",
-        "lr_3e-4",
-        "dropout_0.5",
-        "finetune_block13",
-    }
-    # Cada alternativa vary un solo factor respecto al punto de partida (lr=1e-3).
-    por_nombre = {experimento["nombre"]: experimento for experimento in experimentos}
-    assert por_nombre["lr_5e-5"]["learning_rate"] == 5e-5
-    assert por_nombre["lr_3e-4"]["learning_rate"] == 3e-4
-    assert por_nombre["dropout_0.5"]["learning_rate"] == 1e-3
-    assert por_nombre["dropout_0.5"]["dropout"] == 0.5
-    assert por_nombre["finetune_block13"]["learning_rate"] == 1e-3
-    assert por_nombre["finetune_block13"]["dropout"] == 0.3
-    assert por_nombre["finetune_block13"]["fine_tune_from"] is not None
-
-    resultados_tuning = json.loads(
-        (RUTA_RESULTADOS_ENTRENAMIENTO.parent / "mobilenetv2_tuning_results.json").read_text(encoding="utf-8")
-    )
-    assert resultados_tuning["punto_de_partida"]["config_id"] == "lr_1e-3"
-    # La selección del tuning se hace solo con validation e incluye el punto de partida.
-    assert resultados_tuning["seleccion"]["ganador"] == "finetune_block13"
-    assert resultados_tuning["seleccion"]["config"]["learning_rate"] == 1e-3
-    assert resultados_tuning["seleccion"]["mejora_vs_punto_de_partida"] is True
-    assert {item["experimento"] for item in resultados_tuning["tabla_ordenada"]} >= {
-        "punto_de_partida_sensibilidad",
-        "lr_5e-5",
-        "lr_3e-4",
-        "dropout_0.5",
-        "finetune_block13",
-    }
-
-
-def test_el_desbalance_parte_del_ganador_del_tuning() -> None:
-    from src.training.tuning_desbalance_clases import cargar_config_ajustado
-
-    resultados_tuning = json.loads(
-        (RUTA_RESULTADOS_ENTRENAMIENTO.parent / "mobilenetv2_tuning_results.json").read_text(encoding="utf-8")
-    )
-    config = cargar_config_ajustado()
-    assert config["origen"] == "tuning"
-    assert config["experimento"] == resultados_tuning["seleccion"]["ganador"]
-    assert config["learning_rate"] == resultados_tuning["seleccion"]["config"]["learning_rate"]
-
-    resultados_desbalance = json.loads(
-        (RUTA_RESULTADOS_ENTRENAMIENTO.parent / "mobilenetv2_desbalance_results.json").read_text(encoding="utf-8")
-    )
-    assert resultados_desbalance["config_ajustado"]["experimento"] == config["experimento"]
-    assert resultados_desbalance["seleccion"]["experimento"] in {
-        f"mobileNetV2_ajustado_{config['experimento']}",
+    config = punto_de_partida["config"]
+    variantes = construir_variantes(config)
+    # Ninguna variante vuelve a variar learning rate, dropout ni epochs.
+    for variante in variantes:
+        assert "learning_rate" not in variante
+        assert "dropout" not in variante
+        assert "epochs" not in variante
+    assert {variante["id"] for variante in variantes} == {
+        "oversampling_normal",
         "class_weight",
-        "oversampling",
+        "finetune_block16",
+        "finetune_block13",
+        "finetune_block10",
     }
-    # TEST solo se mide tras cerrar la selección de la etapa.
-    assert len(resultados_desbalance["final_test"]["y_true"]) == 624
-    assert resultados_desbalance["criterio_exito"]["cumple"] in (True, False)
+
+
+def test_el_flujo_vigente_no_parte_del_tuning_historico(payload: dict[str, Any]) -> None:
+    """El desbalance se optimiza sobre la sensibilidad, no sobre el tuning heredado de lr=3e-4."""
+    optimizacion = json.loads(
+        (RUTA_RESULTADOS_ENTRENAMIENTO.parent / "optimization_results.json").read_text(encoding="utf-8")
+    )
+    punto = optimizacion["punto_de_partida"]
+    assert punto["config_id"] == payload["ganador_global"]["config_id"] == "lr_1e-3"
+    assert punto["config"] == {"learning_rate": 1e-3, "dropout": 0.3, "epochs": 3}
+    # La sensibilidad se reutilizó, no se reejecutó.
+    assert optimizacion["sensibilidad"]["numero_de_pruebas"] == 21
+    assert optimizacion["sensibilidad"]["reutilizado_sin_reejecutar"] is True
+    # El test no participó de la decisión.
+    assert optimizacion["test_utilizado_para_seleccion"] is False
+    assert optimizacion["seleccion"]["split"] == "validation"
+    # Las variantes solo reportan validation; el test va en las secciones dedicated.
+    for item in optimizacion["resultados"]:
+        assert "test" not in item
+        assert set(optimizacion["criterio_seleccion"].split(" > ")) <= set(item["validation"])
 
 
 def test_la_auditoria_de_test_esta_separada_de_la_sensibilidad(payload: dict[str, Any]) -> None:

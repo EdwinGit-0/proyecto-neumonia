@@ -1098,174 +1098,6 @@
         }
       ]
     },
-    "MobileNetV2": {
-      "config_id": "lr_1e-3",
-      "grupo": "learning_rate",
-      "config": {
-        "learning_rate": 0.001,
-        "dropout": 0.3,
-        "epochs": 3
-      },
-      "validation": {
-        "accuracy": 0.9645254074784276,
-        "precision": 0.9817232375979112,
-        "recall": 0.9703225806451613,
-        "specificity": 0.9477611940298507,
-        "balanced_accuracy": 0.959041887337506,
-        "f1": 0.9759896171317326,
-        "roc_auc": 0.993644679826673,
-        "n_evaluadas": 1043,
-        "n_clase_0": 268,
-        "n_clase_1": 775,
-        "matriz_confusion": {
-          "tn": 254,
-          "fp": 14,
-          "fn": 23,
-          "tp": 752
-        }
-      },
-      "delta_balanced_accuracy_vs_referencia": 0.018796340876263806,
-      "referencia_original": {
-        "config_id": "ref_lr1e-4_do0.3_ep3",
-        "config": {
-          "learning_rate": 0.0001,
-          "dropout": 0.3,
-          "epochs": 3
-        },
-        "validation": {
-          "accuracy": 0.9511025886864813,
-          "precision": 0.9713541666666666,
-          "recall": 0.9625806451612903,
-          "specificity": 0.917910447761194,
-          "balanced_accuracy": 0.9402455464612421,
-          "f1": 0.9669475048606611,
-          "roc_auc": 0.9889696677900818,
-          "n_evaluadas": 1043,
-          "n_clase_0": 268,
-          "n_clase_1": 775,
-          "matriz_confusion": {
-            "tn": 246,
-            "fp": 22,
-            "fn": 29,
-            "tp": 746
-          }
-        }
-      },
-      "tabla_ordenada": [
-        {
-          "config_id": "lr_1e-3",
-          "grupo": "learning_rate",
-          "config": {
-            "learning_rate": 0.001,
-            "dropout": 0.3,
-            "epochs": 3
-          },
-          "accuracy": 0.9645254074784276,
-          "precision": 0.9817232375979112,
-          "recall": 0.9703225806451613,
-          "specificity": 0.9477611940298507,
-          "balanced_accuracy": 0.959041887337506,
-          "f1": 0.9759896171317326,
-          "roc_auc": 0.993644679826673
-        },
-        {
-          "config_id": "ep_10",
-          "grupo": "epochs",
-          "config": {
-            "learning_rate": 0.0001,
-            "dropout": 0.3,
-            "epochs": 10
-          },
-          "accuracy": 0.965484180249281,
-          "precision": 0.9780077619663649,
-          "recall": 0.9754838709677419,
-          "specificity": 0.9365671641791045,
-          "balanced_accuracy": 0.9560255175734231,
-          "f1": 0.9767441860465116,
-          "roc_auc": 0.9939576311988445
-        },
-        {
-          "config_id": "lr_3e-4",
-          "grupo": "learning_rate",
-          "config": {
-            "learning_rate": 0.0003,
-            "dropout": 0.3,
-            "epochs": 3
-          },
-          "accuracy": 0.959731543624161,
-          "precision": 0.9816031537450722,
-          "recall": 0.9638709677419355,
-          "specificity": 0.9477611940298507,
-          "balanced_accuracy": 0.9558160808858931,
-          "f1": 0.97265625,
-          "roc_auc": 0.9926480500722196
-        },
-        {
-          "config_id": "do_0.2",
-          "grupo": "dropout",
-          "config": {
-            "learning_rate": 0.0001,
-            "dropout": 0.2,
-            "epochs": 3
-          },
-          "accuracy": 0.9520613614573347,
-          "precision": 0.9750982961992136,
-          "recall": 0.96,
-          "specificity": 0.9291044776119403,
-          "balanced_accuracy": 0.9445522388059702,
-          "f1": 0.9674902470741222,
-          "roc_auc": 0.9893500240731825
-        },
-        {
-          "config_id": "ref_lr1e-4_do0.3_ep3",
-          "grupo": "referencia",
-          "config": {
-            "learning_rate": 0.0001,
-            "dropout": 0.3,
-            "epochs": 3
-          },
-          "accuracy": 0.9511025886864813,
-          "precision": 0.9713541666666666,
-          "recall": 0.9625806451612903,
-          "specificity": 0.917910447761194,
-          "balanced_accuracy": 0.9402455464612421,
-          "f1": 0.9669475048606611,
-          "roc_auc": 0.9889696677900818
-        },
-        {
-          "config_id": "do_0.5",
-          "grupo": "dropout",
-          "config": {
-            "learning_rate": 0.0001,
-            "dropout": 0.5,
-            "epochs": 3
-          },
-          "accuracy": 0.9520613614573347,
-          "precision": 0.9701686121919585,
-          "recall": 0.9651612903225807,
-          "specificity": 0.914179104477612,
-          "balanced_accuracy": 0.9396701974000963,
-          "f1": 0.9676584734799483,
-          "roc_auc": 0.9873952816562349
-        },
-        {
-          "config_id": "ep_5",
-          "grupo": "epochs",
-          "config": {
-            "learning_rate": 0.0001,
-            "dropout": 0.3,
-            "epochs": 5
-          },
-          "accuracy": 0.9578139980824545,
-          "precision": 0.9656050955414013,
-          "recall": 0.9780645161290322,
-          "specificity": 0.8992537313432836,
-          "balanced_accuracy": 0.9386591237361579,
-          "f1": 0.9717948717948718,
-          "roc_auc": 0.9907221954742417
-        }
-      ]
-    },
     "VGG16": {
       "config_id": "lr_1e-3",
       "grupo": "learning_rate",
@@ -1431,6 +1263,174 @@
           "balanced_accuracy": 0.8511290322580645,
           "f1": 0.9341772151898734,
           "roc_auc": 0.963389504092441
+        }
+      ]
+    },
+    "MobileNetV2": {
+      "config_id": "lr_1e-3",
+      "grupo": "learning_rate",
+      "config": {
+        "learning_rate": 0.001,
+        "dropout": 0.3,
+        "epochs": 3
+      },
+      "validation": {
+        "accuracy": 0.9645254074784276,
+        "precision": 0.9817232375979112,
+        "recall": 0.9703225806451613,
+        "specificity": 0.9477611940298507,
+        "balanced_accuracy": 0.959041887337506,
+        "f1": 0.9759896171317326,
+        "roc_auc": 0.993644679826673,
+        "n_evaluadas": 1043,
+        "n_clase_0": 268,
+        "n_clase_1": 775,
+        "matriz_confusion": {
+          "tn": 254,
+          "fp": 14,
+          "fn": 23,
+          "tp": 752
+        }
+      },
+      "delta_balanced_accuracy_vs_referencia": 0.018796340876263806,
+      "referencia_original": {
+        "config_id": "ref_lr1e-4_do0.3_ep3",
+        "config": {
+          "learning_rate": 0.0001,
+          "dropout": 0.3,
+          "epochs": 3
+        },
+        "validation": {
+          "accuracy": 0.9511025886864813,
+          "precision": 0.9713541666666666,
+          "recall": 0.9625806451612903,
+          "specificity": 0.917910447761194,
+          "balanced_accuracy": 0.9402455464612421,
+          "f1": 0.9669475048606611,
+          "roc_auc": 0.9889696677900818,
+          "n_evaluadas": 1043,
+          "n_clase_0": 268,
+          "n_clase_1": 775,
+          "matriz_confusion": {
+            "tn": 246,
+            "fp": 22,
+            "fn": 29,
+            "tp": 746
+          }
+        }
+      },
+      "tabla_ordenada": [
+        {
+          "config_id": "lr_1e-3",
+          "grupo": "learning_rate",
+          "config": {
+            "learning_rate": 0.001,
+            "dropout": 0.3,
+            "epochs": 3
+          },
+          "accuracy": 0.9645254074784276,
+          "precision": 0.9817232375979112,
+          "recall": 0.9703225806451613,
+          "specificity": 0.9477611940298507,
+          "balanced_accuracy": 0.959041887337506,
+          "f1": 0.9759896171317326,
+          "roc_auc": 0.993644679826673
+        },
+        {
+          "config_id": "ep_10",
+          "grupo": "epochs",
+          "config": {
+            "learning_rate": 0.0001,
+            "dropout": 0.3,
+            "epochs": 10
+          },
+          "accuracy": 0.965484180249281,
+          "precision": 0.9780077619663649,
+          "recall": 0.9754838709677419,
+          "specificity": 0.9365671641791045,
+          "balanced_accuracy": 0.9560255175734231,
+          "f1": 0.9767441860465116,
+          "roc_auc": 0.9939576311988445
+        },
+        {
+          "config_id": "lr_3e-4",
+          "grupo": "learning_rate",
+          "config": {
+            "learning_rate": 0.0003,
+            "dropout": 0.3,
+            "epochs": 3
+          },
+          "accuracy": 0.959731543624161,
+          "precision": 0.9816031537450722,
+          "recall": 0.9638709677419355,
+          "specificity": 0.9477611940298507,
+          "balanced_accuracy": 0.9558160808858931,
+          "f1": 0.97265625,
+          "roc_auc": 0.9926480500722196
+        },
+        {
+          "config_id": "do_0.2",
+          "grupo": "dropout",
+          "config": {
+            "learning_rate": 0.0001,
+            "dropout": 0.2,
+            "epochs": 3
+          },
+          "accuracy": 0.9520613614573347,
+          "precision": 0.9750982961992136,
+          "recall": 0.96,
+          "specificity": 0.9291044776119403,
+          "balanced_accuracy": 0.9445522388059702,
+          "f1": 0.9674902470741222,
+          "roc_auc": 0.9893500240731825
+        },
+        {
+          "config_id": "ref_lr1e-4_do0.3_ep3",
+          "grupo": "referencia",
+          "config": {
+            "learning_rate": 0.0001,
+            "dropout": 0.3,
+            "epochs": 3
+          },
+          "accuracy": 0.9511025886864813,
+          "precision": 0.9713541666666666,
+          "recall": 0.9625806451612903,
+          "specificity": 0.917910447761194,
+          "balanced_accuracy": 0.9402455464612421,
+          "f1": 0.9669475048606611,
+          "roc_auc": 0.9889696677900818
+        },
+        {
+          "config_id": "do_0.5",
+          "grupo": "dropout",
+          "config": {
+            "learning_rate": 0.0001,
+            "dropout": 0.5,
+            "epochs": 3
+          },
+          "accuracy": 0.9520613614573347,
+          "precision": 0.9701686121919585,
+          "recall": 0.9651612903225807,
+          "specificity": 0.914179104477612,
+          "balanced_accuracy": 0.9396701974000963,
+          "f1": 0.9676584734799483,
+          "roc_auc": 0.9873952816562349
+        },
+        {
+          "config_id": "ep_5",
+          "grupo": "epochs",
+          "config": {
+            "learning_rate": 0.0001,
+            "dropout": 0.3,
+            "epochs": 5
+          },
+          "accuracy": 0.9578139980824545,
+          "precision": 0.9656050955414013,
+          "recall": 0.9780645161290322,
+          "specificity": 0.8992537313432836,
+          "balanced_accuracy": 0.9386591237361579,
+          "f1": 0.9717948717948718,
+          "roc_auc": 0.9907221954742417
         }
       ]
     }

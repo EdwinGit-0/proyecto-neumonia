@@ -7,12 +7,23 @@ de invocar módulos completos:
     neumonia prepare
     neumonia augment
     neumonia sensibilidad
+    neumonia test-inicial
+    neumonia optimizar
     neumonia train
-    neumonia tune
-    neumonia desbalance
     neumonia evaluate
     neumonia test
     neumonia run
+
+El flujo definitivo del proyecto es ``neumonia run``: el análisis de sensibilidad
+de 21 pruebas ya está realizado y solo se consulta, a continuación se mide el
+test inicial del MobileNetV2 ganador, se optimiza ese mismo modelo y se mide el
+test final de la estrategia elegida por validación.
+
+Los comandos ``tune`` y ``desbalance`` se eliminaron: reevaluaban ``learning_rate``
+y ``dropout`` sobre un modelo ajustado a ``lr=3e-4``, algo que el análisis de
+sensibilidad ya resolvió. Sus artefactos históricos siguen en
+``models/mobilenetv2_tuning_results.json`` y
+``models/mobilenetv2_desbalance_results.json``.
 
 La CLI solo invoca las funciones existentes del proyecto; no duplica ni modifica
 la lógica científica de ninguna etapa.
@@ -32,6 +43,7 @@ from src.utils.paths import DIRECTORIO_DATOS, DIRECTORIO_MODELOS, RAIZ_PROYECTO
 SEMILLA = 42
 RUTA_MANIFIESTO = RAIZ_PROYECTO / "data" / "interim" / "stratified_split_train80_val20_test_original.csv"
 RUTA_RESULTADOS = DIRECTORIO_MODELOS / "model_results.json"
+RUTA_RESULTADOS_OPTIMIZACION = DIRECTORIO_MODELOS / "optimization_results.json"
 COLUMNAS_METRICAS = [
     "model_name",
     "accuracy",
@@ -181,6 +193,50 @@ def sensibilidad(recalcular: bool) -> None:
     click.echo("Analisis de sensibilidad completado.")
 
 
+@cli.command("test-inicial")
+def test_inicial() -> None:
+    """Evaluar en test el MobileNetV2 ganador de la sensibilidad (no optimizado)."""
+    from src.training.optimizacion_mobilenetv2 import registrar_test_inicial
+    from src.training.sensitivity import cargar_punto_de_partida_sensibilidad
+
+    click.echo("Evaluando en TEST el MobileNetV2 ganador de la sensibilidad...")
+    punto_de_partida = cargar_punto_de_partida_sensibilidad()
+    registro = registrar_test_inicial(punto_de_partida)
+
+    test = registro["test"]
+    click.echo(
+        f"Test inicial ({registro['modelo']}): balanced_accuracy={test['balanced_accuracy']:.4f}, "
+        f"roc_auc={test['roc_auc']:.4f}, f1={test['f1']:.4f}, accuracy={test['accuracy']:.4f}"
+    )
+    click.echo("Es una medicion previa a la optimizacion: no interviene en ninguna decision.")
+
+
+@cli.command("optimizar")
+@click.option("--reusar", is_flag=True, help="Reutilizar resultados parciales de variantes ya entrenadas.")
+def optimizar(reusar: bool) -> None:
+    """Optimizar el MobileNetV2 ganador: test inicial, optimizacion y test final.
+
+    No repite las 21 pruebas de sensibilidad ni vuelve a evaluar learning rate,
+    dropout o epocas. La decision se toma solo sobre validation.
+    """
+    from src.training.optimizacion_mobilenetv2 import (
+        RUTA_RESULTADOS as RUTA_OPTIMIZACION,
+        ejecutar_flujo_optimizacion,
+        resumir_optimizacion,
+    )
+
+    click.echo("=== Optimizacion de MobileNetV2 sobre el ganador de la sensibilidad ===")
+    click.echo("No se repiten las 21 pruebas: se reutiliza su artefacto como punto de partida.")
+    click.echo("Este comando reentrena MobileNetV2 y puede tardar bastante (no interrumpir).")
+    try:
+        payload = ejecutar_flujo_optimizacion(reusar=reusar)
+    except FileNotFoundError as error:
+        raise click.ClickException(str(error)) from error
+
+    click.echo("\n" + resumir_optimizacion(payload))
+    click.echo(f"\nArtefacto: {RUTA_OPTIMIZACION}")
+
+
 @cli.command()
 def train() -> None:
     """Entrenar VGG16, ResNet50 y MobileNetV2; evaluar, comparar y seleccionar el mejor."""
@@ -196,47 +252,29 @@ def train() -> None:
 
 
 @cli.command()
-def tune() -> None:
-    """Ejecutar el tuning experimental de MobileNetV2 (learning rate, dropout y fine-tuning)."""
-    from src.training.tuning_mobilenetv2 import entrenar_y_evaluar_tuning
-
-    click.echo("Este comando reentrena MobileNetV2 con varias configuraciones y puede tardar bastante (no interrumpir).")
-    click.echo("Solo se usan TRAIN y VALIDATION para decidir; el TEST queda reservado para el final.")
-    resultado = entrenar_y_evaluar_tuning()
-    click.echo("Configuración elegida:")
-    click.echo(json.dumps(resultado["seleccion"], indent=2, default=str))
-    click.echo("Resultados finales sobre test del modelo elegido:")
-    click.echo(json.dumps(resultado["final_test"], indent=2, default=str))
-    click.echo("Tuning completado. Resultados en models/mobilenetv2_tuning_results.json")
-
-
-@cli.command()
-def desbalance() -> None:
-    """Ejecutar los experimentos de desbalance de clases (class_weight y oversampling) sobre el ajustado lr=3e-4."""
-    from src.training.tuning_desbalance_clases import entrenar_y_evaluar_desbalance
-
-    click.echo("Este comando reentrena variantes con class_weight y oversampling y puede tardar bastante (no interrumpir).")
-    click.echo("Solo se usan TRAIN y VALIDATION para decidir; el TEST queda reservado para el final.")
-    resultado = entrenar_y_evaluar_desbalance()
-    click.echo("Tabla de selección sobre validation:")
-    click.echo(json.dumps(resultado["tabla_seleccion"], indent=2, default=str))
-    click.echo(f"Motivo de la selección: {resultado['motivo_seleccion']}")
-    click.echo("Resultados finales sobre test del modelo elegido:")
-    click.echo(json.dumps(resultado["final_test"], indent=2, default=str))
-    click.echo("Experimentos completados. Resultados en models/mobilenetv2_desbalance_results.json")
-
-
-@cli.command()
 def evaluate() -> None:
-    """Mostrar los resultados guardados de la evaluación sin volver a entrenar."""
+    """Mostrar los resultados guardados de la evaluación sin volver a entrenar.
+
+    El resultado final que se muestra es el ``test_final`` de la etapa de
+    optimización (``models/optimization_results.json``), es decir, el del modelo
+    seleccionado sobre ``validation`` después de optimizar. El ``test`` inicial
+    del ganador de la sensibilidad se conserva como referencia y el baseline
+    mayoritario se sigue leyendo del flujo base, que es donde se calcula.
+    """
     if not RUTA_RESULTADOS.exists():
         raise click.ClickException(
             f"No existe {RUTA_RESULTADOS}. Ejecute primero 'neumonia train' para generar los resultados."
+        )
+    if not RUTA_RESULTADOS_OPTIMIZACION.exists():
+        raise click.ClickException(
+            f"No existe {RUTA_RESULTADOS_OPTIMIZACION}. Ejecute primero 'neumonia optimizar' "
+            "para generar los resultados de la optimización."
         )
 
     import pandas as pd
 
     resultado = json.loads(RUTA_RESULTADOS.read_text(encoding="utf-8"))
+    optimizacion = json.loads(RUTA_RESULTADOS_OPTIMIZACION.read_text(encoding="utf-8"))
     click.echo(f"Manifiesto de división: {resultado['split_manifest']}")
     click.echo(f"División: 80/20 con random_state={resultado['split_random_state']}")
 
@@ -254,7 +292,10 @@ def evaluate() -> None:
     click.echo("\nBaseline mayoritaria sobre test:")
     baseline = resultado.get("baseline_test", {})
     for clave, valor in baseline.items():
-        click.echo(f"  {clave}: {valor}")
+        if isinstance(valor, float):
+            click.echo(f"  {clave}: {valor:.4f}")
+        else:
+            click.echo(f"  {clave}: {valor}")
 
     click.echo("\nCriterio de éxito:")
     criterio = resultado.get("criterio_exito", {})
@@ -263,11 +304,22 @@ def evaluate() -> None:
     click.echo(f"  Sensibilidad sobre azar: {criterio.get('sensibilidad_sobre_azar')}")
     click.echo(f"  Especificidad sobre azar: {criterio.get('especificidad_sobre_azar')}")
 
-    click.echo("\nResultados finales sobre test (solo el modelo ganador):")
-    tabla_test = pd.DataFrame([resultado["final_test"]])[COLUMNAS_METRICAS]
-    click.echo(tabla_test.to_string(index=False))
-    click.echo(f"Matriz de confusión en: {resultado['final_test']['confusion_plot']}")
-    click.echo(f"Curva ROC en: {resultado['final_test']['roc_plot']}")
+    click.echo(f"\nArtefacto de optimización: {RUTA_RESULTADOS_OPTIMIZACION}")
+    click.echo(f"Criterio de selección: {optimizacion.get('criterio_seleccion')}")
+    click.echo(f"Test utilizado para la selección: {optimizacion.get('test_utilizado_para_seleccion')}")
+    click.echo(f"Modelo final: {optimizacion.get('modelo_final')}")
+
+    click.echo("\nTest inicial (ganador de la sensibilidad, antes de optimizar):")
+    test_inicial = optimizacion["test_inicial"]["test"]
+    click.echo(pd.DataFrame([test_inicial])[COLUMNAS_METRICAS].round(4).to_string(index=False))
+    click.echo(f"Matriz de confusión: {test_inicial['confusion_matrix']}")
+
+    click.echo("\nTest final (modelo seleccionado tras la optimización):")
+    test_final = optimizacion["test_final"]["test"]
+    click.echo(pd.DataFrame([test_final])[COLUMNAS_METRICAS].round(4).to_string(index=False))
+    click.echo(f"Matriz de confusión: {test_final['confusion_matrix']}")
+    click.echo(f"Matriz de confusión en: {test_final['confusion_plot']}")
+    click.echo(f"Curva ROC en: {test_final['roc_plot']}")
 
 
 @cli.command()
@@ -286,14 +338,18 @@ def test(verbose: bool) -> None:
 
 @cli.command()
 def run() -> None:
-    """Ejecutar el flujo completo: EDA, preparación, augmentación, sensibilidad, entrenamiento, evaluación y test."""
+    """Ejecutar el flujo definitivo del proyecto.
+
+    EDA, preparacion, augmentacion, analisis de sensibilidad (consulta, sin repetir
+    las 21 pruebas), test inicial del MobileNetV2 ganador, optimizacion de ese mismo
+    MobileNetV2 y test final. Al terminar, la suite de pruebas.
+    """
     click.echo("=== Flujo completo del proyecto ===")
     eda()
     prepare()
     augment()
     sensibilidad(recalcular=False)
-    train()
-    evaluate()
+    optimizar(reusar=False)
     test()
     click.echo("=== Flujo completo finalizado ===")
 

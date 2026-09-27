@@ -1,0 +1,73 @@
+{
+  "id": "oversampling_normal",
+  "grupo": "desbalance",
+  "descripcion": "Oversampling de NORMAL hasta equipararlo con PNEUMONIA en train",
+  "config": {
+    "learning_rate": 0.001,
+    "dropout": 0.3,
+    "epochs": 3
+  },
+  "tratamiento": "oversampling",
+  "fine_tune_from": null,
+  "capa_descongelada": null,
+  "capas_entrenables": 4,
+  "capas_totales": 158,
+  "train": {
+    "NORMAL_original": 1073,
+    "PNEUMONIA_original": 3100,
+    "NORMAL_oversampled": 3100,
+    "total_train_oversampled": 6200,
+    "duplicadas_NORMAL": 2027
+  },
+  "class_weight": null,
+  "epochs_ejecutadas": 3,
+  "early_stopping": false,
+  "learning_rate_final": 0.0010000000474974513,
+  "segundos_entrenamiento": 554.0013470649719,
+  "checkpoint": "models\\mobilenetv2_optimizacion\\oversampling_normal\\best_model.keras",
+  "history": {
+    "loss": [
+      0.16206638514995575,
+      0.11711972951889038,
+      0.1019294485449791
+    ],
+    "accuracy": [
+      0.9346774220466614,
+      0.9543548226356506,
+      0.9614515900611877
+    ],
+    "val_loss": [
+      0.17859569191932678,
+      0.1656528115272522,
+      0.0938110500574112
+    ],
+    "val_accuracy": [
+      0.923298180103302,
+      0.9376797676086426,
+      0.9597315192222595
+    ],
+    "lr": [
+      0.0010000000474974513,
+      0.0010000000474974513,
+      0.0010000000474974513
+    ]
+  },
+  "validation": {
+    "accuracy": 0.959731543624161,
+    "precision": 0.9867197875166003,
+    "recall": 0.9587096774193549,
+    "specificity": 0.9626865671641791,
+    "balanced_accuracy": 0.960698122291767,
+    "f1": 0.9725130890052356,
+    "roc_auc": 0.9948916706788637,
+    "n_evaluadas": 1043,
+    "n_clase_0": 268,
+    "n_clase_1": 775,
+    "matriz_confusion": {
+      "tn": 258,
+      "fp": 10,
+      "fn": 32,
+      "tp": 743
+    }
+  }
+}

@@ -1,0 +1,67 @@
+{
+  "id": "finetune_block13",
+  "grupo": "fine_tuning",
+  "descripcion": "Descongelar block_13_expand (indice 116, bloques 13-16)",
+  "config": {
+    "learning_rate": 0.001,
+    "dropout": 0.3,
+    "epochs": 3
+  },
+  "tratamiento": "ninguno",
+  "fine_tune_from": 116,
+  "capa_descongelada": "block_13_expand",
+  "capas_entrenables": 42,
+  "capas_totales": 158,
+  "train": {},
+  "class_weight": null,
+  "epochs_ejecutadas": 3,
+  "early_stopping": false,
+  "learning_rate_final": 0.0010000000474974513,
+  "segundos_entrenamiento": 413.40245294570923,
+  "checkpoint": "models\\mobilenetv2_optimizacion\\finetune_block13\\best_model.keras",
+  "history": {
+    "loss": [
+      0.1539645791053772,
+      0.09720323979854584,
+      0.09692957997322083
+    ],
+    "accuracy": [
+      0.9376947283744812,
+      0.9666906595230103,
+      0.9635753631591797
+    ],
+    "val_loss": [
+      9.557605743408203,
+      0.9777969717979431,
+      1.8281440734863281
+    ],
+    "val_accuracy": [
+      0.743048906326294,
+      0.8005752563476562,
+      0.7718120813369751
+    ],
+    "lr": [
+      0.0010000000474974513,
+      0.0010000000474974513,
+      0.0010000000474974513
+    ]
+  },
+  "validation": {
+    "accuracy": 0.800575263662512,
+    "precision": 0.7884028484231943,
+    "recall": 1.0,
+    "specificity": 0.22388059701492538,
+    "balanced_accuracy": 0.6119402985074627,
+    "f1": 0.8816837315130831,
+    "roc_auc": 0.9965310544053925,
+    "n_evaluadas": 1043,
+    "n_clase_0": 268,
+    "n_clase_1": 775,
+    "matriz_confusion": {
+      "tn": 60,
+      "fp": 208,
+      "fn": 0,
+      "tp": 775
+    }
+  }
+}

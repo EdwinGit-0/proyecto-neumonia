@@ -9,6 +9,7 @@ import tensorflow as tf
 
 from src.data.preprocessing import construir_dataframe_dataset, imagen_a_arreglo, cargar_imagen
 from src.data.splitting import cargar_manifiesto_division
+from src.utils.reproducibility import SEMILLA
 
 
 def _a_dataset_tensor(df: Any, image_size: tuple[int, int], batch_size: int = 32) -> tf.data.Dataset:
@@ -27,7 +28,13 @@ def _a_dataset_tensor(df: Any, image_size: tuple[int, int], batch_size: int = 32
             tf.TensorSpec(shape=(), dtype=tf.float32),
         ),
     )
-    return dataset.shuffle(buffer_size=max(1000, len(df))).batch(batch_size).prefetch(tf.data.AUTOTUNE)
+    # El seed explicito es lo que hace reproducible el orden de los ejemplos: sin el,
+    # dos ejecuciones del mismo codigo entrenaban sobre batches distintos.
+    return (
+        dataset.shuffle(buffer_size=max(1000, len(df)), seed=SEMILLA, reshuffle_each_iteration=True)
+        .batch(batch_size)
+        .prefetch(tf.data.AUTOTUNE)
+    )
 
 
 def construir_pipelines_datos(

@@ -26,9 +26,9 @@ from src.models.evaluation import (
     evaluar_criterio_exito,
 )
 from src.utils.paths import DIRECTORIO_DATOS, DIRECTORIO_FIGURAS, DIRECTORIO_MODELOS, RAIZ_PROYECTO, asegurar_directorio
+from src.utils.reproducibility import SEMILLA, configurar_reproducibilidad
 
 
-SEMILLA = 42
 TAMANO_IMAGEN = (224, 224)
 TAMANO_LOTE = 16
 EPOCAS = 3
@@ -36,8 +36,10 @@ EPOCAS = 3
 
 def configurar_ejecucion() -> None:
     """Configurar TensorFlow para un entrenamiento reproducible en este entorno."""
-    tf.keras.utils.set_random_seed(SEMILLA)
-    tf.config.experimental.set_memory_growth(tf.config.list_physical_devices("GPU")[0], True) if tf.config.list_physical_devices("GPU") else None
+    configurar_reproducibilidad(SEMILLA)
+    gpus = tf.config.list_physical_devices("GPU")
+    if gpus:
+        tf.config.experimental.set_memory_growth(gpus[0], True)
 
 
 def crear_capas_augmentation() -> list:
@@ -46,21 +48,30 @@ def crear_capas_augmentation() -> list:
     Se descarta el volteo horizontal porque las radiografías de tórax pueden
     contener información de lateralidad anatómica y marcadores L/R; un volteo
     horizontal podría invertir artificialmente esa información.
+
+    Cada capa recibe ``seed=SEMILLA``: sin ella la augmentación usa el estado
+    global del generador en el momento de crearse, y dos ejecuciones del mismo
+    código entrenaban sobre imágenes distintas. La magnitud de la augmentation no
+    cambia; solo pasa a ser reproducible.
     """
     return [
-        tf.keras.layers.RandomRotation(0.05),
-        tf.keras.layers.RandomZoom(0.05),
+        tf.keras.layers.RandomRotation(0.05, seed=SEMILLA),
+        tf.keras.layers.RandomZoom(0.05, seed=SEMILLA),
     ]
 
 
 def construir_pipeline_augmentation(train_dataset: tf.data.Dataset) -> tf.data.Dataset:
     """Aplicar augmentation ligera únicamente al conjunto de entrenamiento."""
-    augmentation = tf.keras.Sequential(crear_capas_augmentation())
+    augmentation = tf.keras.Sequential(crear_capas_augmentation(), name="augmentation")
 
     def augment_examples(features: tf.Tensor, labels: tf.Tensor) -> tuple[tf.Tensor, tf.Tensor]:
         return augmentation(features, training=True), labels
 
-    return train_dataset.map(augment_examples, num_parallel_calls=tf.data.AUTOTUNE)
+    # deterministic=True mantiene el orden de salida aunque el map se ejecute en
+    # paralelo; con las capas ya sembradas el resultado es bit a bit reproducible.
+    return train_dataset.map(
+        augment_examples, num_parallel_calls=tf.data.AUTOTUNE, deterministic=True
+    )
 
 
 def guardar_matriz_confusion(y_true: np.ndarray, y_pred: np.ndarray, model_name: str, split_name: str) -> Path:
