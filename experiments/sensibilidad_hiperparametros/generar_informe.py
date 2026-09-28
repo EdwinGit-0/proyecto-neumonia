@@ -4,9 +4,8 @@ Solo lee resultados ya calculados dentro del experimento:
 - resultados/sensibilidad_resultados.json
 - resultados/seleccion.json
 
-No lee `models/*.json` (eliminados al retirar el flujo que usaba TEST) y no
-necesita ninguna evaluación sobre TEST: la única evaluación sobre TEST del
-proyecto es la evaluación final del modelo definitivo (`src/training/flujo_final.py`).
+No lee `models/*.json` y no necesita ninguna evaluación sobre TEST: la única evaluación sobre
+TEST del proyecto es la evaluación final del modelo definitivo (`src/training/flujo_final.py`).
 
 Escribe únicamente INFORME_SENSIBILIDAD.md dentro del directorio del experimento.
 No modifica src/, models/, reports/, data/ ni la monografía.
@@ -370,7 +369,7 @@ def main() -> None:
     anadir("2. **Un factor por vez.** No se exploran interacciones, ni la combinación de `lr=1e-3` con oversampling")
     anadir("   o class weights, que es justamente lo que evalúa la estrategia final COMBINADO.")
     anadir("3. **Solo tres valores por hiperparámetro**, sin búsqueda en rejilla. No es una búsqueda exhaustiva.")
-    anadir("4. **Rama sin tratamiento de desbalance.** El barrido se hizo sobre los tres modelos en su")
+    anadir("4. **El barrido no incluye tratamiento de desbalance.** Se hizo sobre los tres modelos en su")
     anadir("   configuración de referencia, sin class weights ni oversampling.")
     anadir("5. **Una sola partición de validación** de 1.043 imágenes con fuerte desbalance (268 NORMAL). El balanced")
     anadir("   accuracy es el criterio adecuado, pero un único split sigue siendo una fuente de incertidumbre.")
@@ -394,8 +393,8 @@ def main() -> None:
     anadir("")
     anadir("El criterio de selección derivado de este análisis es el mismo del proyecto y se aplica, en el flujo")
     anadir("final, a la comparación de hiperparámetros por arquitectura. El tratamiento del desbalance no es una")
-    anadir("variable a comparar: el flujo final usa una estrategia única, COMBINADO, que se toma como premisa del")
-    anadir("proyecto y no se mide frente a sin tratamiento, oversampling o class weights por separado.")
+    anadir("variable de este barrido: el flujo final usa COMBINADO (oversampling 50/50 más class weights) como")
+    anadir("premisa metodológica cerrada.")
     anadir("")
 
     RUTA_INFORME.write_text("\n".join(lineas) + "\n", encoding="utf-8")

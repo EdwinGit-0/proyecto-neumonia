@@ -90,11 +90,12 @@ target/
 
 .venv/
 
-# Dataset managed by DVC
+# Dataset gestionado con DVC
 data/raw/chest_xray/
-# Trained model artifacts
-models/*/best_model.keras
-# Pipeline final: checkpoints, probabilidades y logs de ejecucion (se regeneran)
+
+# Pesos entrenados: se regeneran con `neumonia sensibilidad`, `neumonia combinado`
+# y `neumonia final`. Lo que sí se versiona son los resultados y los informes.
+experiments/*/checkpoints/
 results/final/combinado/
 results/final/final_model/
 results/**/*.npy

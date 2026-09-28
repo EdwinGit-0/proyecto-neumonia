@@ -139,10 +139,7 @@ Los checkpoints (`.keras`) y las probabilidades (`.npy`) se excluyen de git por 
 | `neumonia test-suite` | Ejecuta `pytest`. |
 | `neumonia run` | Flujo completo, incluida la evaluación del test. |
 
-`neumonia run` encadena las ocho etapas y termina con la suite de pruebas.
-
-Los comandos `train`, `tune`, `desbalance`, `optimizar`, `estrategias`, `test-inicial` y
-`test-una-vez` se eliminaron: pertenecían a flujos que comparaban estrategias o usaban el test para decidir.
+`neumonia run` encadena las nueve etapas, incluida la evaluación del test, y cierra con la suite de pruebas.
 
 ## 6. Preparación de datos y augmentación
 
@@ -154,7 +151,7 @@ El preprocesamiento (`src/data/preprocessing.py`) carga cada imagen con Pillow y
 
 **Aislamiento estructural del test.** `construir_pipelines_datos()` recibe `incluir_test=False` por defecto, de modo que el pipeline de test no se construye en ninguna etapa salvo donde se pide explícitamente con `incluir_test=True`: la evaluación final (`evaluar_test()`), que lo itera para predecir, y la etapa `neumonia prepare`, que solo verifica que el split sea construible. El dataset se crea con `tf.data.Dataset.from_generator`, por lo que es perezoso: construir el objeto no lee ninguna imagen, y `prepare` no abre ni una sola del test.
 
-El volteo horizontal (`RandomFlip("horizontal")`) fue eliminado: en radiografías de tórax puede existir información de lateralidad anatómica y marcadores L/R, y un volteo horizontal podría invertir artificialmente esa información. El tratamiento de desbalance COMBINADO se aplica **solo sobre `train`**, nunca sobre `validation` ni `test`. La figura de ejemplos se genera con `graficar_ejemplos_augmentation` (`src/visualization/visualize.py`) en `reports/figures/data_augmentation_examples.png`.
+El volteo horizontal (`RandomFlip("horizontal")`) no se usa: en radiografías de tórax puede existir información de lateralidad anatómica y marcadores L/R, y un volteo horizontal podría invertir artificialmente esa información. El tratamiento de desbalance COMBINADO se aplica **solo sobre `train`**, nunca sobre `validation` ni `test`. La figura de ejemplos se genera con `graficar_ejemplos_augmentation` (`src/visualization/visualize.py`) en `reports/figures/data_augmentation_examples.png`.
 
 ## 7. Configuración experimental de los modelos
 
@@ -211,8 +208,8 @@ El baseline se calcula en `evaluar_baseline_mayoritaria` y el criterio en `evalu
 Ejecutable en `src/training/sensitivity.py` (CLI: `neumonia sensibilidad`) y en
 `experiments/sensibilidad_hiperparametros/run_sensibilidad.py`. Explora **7 configuraciones** de
 hiperparámetros, cada una repetida en las **3 arquitecturas**, es decir **21 entrenamientos**
-completos con fine-tuning congelado. La etapa **rechaza** cualquier split distinto de `train` y
-`validation`.
+completos con la base convolucional congelada. La etapa **rechaza** cualquier split distinto de
+`train` y `validation`.
 
 | `id` | Grupo | Learning rate | Dropout | Épocas | Varía |
 |---|---|---:|---:|---:|---|
@@ -367,8 +364,8 @@ hiperparámetros y el punto de corte ya están cerrados: la evaluación no reali
 
 ## 10. Testing
 
-La suite se ejecuta con `pytest` o con `neumonia test-suite`. Contiene **93 pruebas** y la ejecución
-final terminó con **93 passed, 109 warnings** (el tiempo de pared varía entre ejecuciones, en torno
+La suite se ejecuta con `pytest` o con `neumonia test-suite`. Contiene **95 pruebas** y la ejecución
+final terminó con **95 passed, 109 warnings** (el tiempo de pared varía entre ejecuciones, en torno
 a 17 s). Las advertencias provienen de dependencias de terceros (futuro fin de soporte de
 `google.api_core` en Python 3.10 y `DeprecationWarning` de `random.randrange` en las pruebas de
 reproducibilidad), no del código del proyecto.
@@ -377,18 +374,19 @@ Las pruebas cubren carga y transformación de imágenes, estadísticas y distrib
 construcción de arquitecturas, métricas y matrices de confusión, selección jerárquica, baseline
 mayoritaria, criterio de éxito, la división experimental (test intacto, estratificación, ausencia de
 duplicados por hash, exclusión del `val` original), la ausencia de `RandomFlip("horizontal")`, las
-cuatro etapas del flujo final y sus rutas de artefactos, y en particular el aislamiento del test:
+ocho etapas del flujo final y sus rutas de artefactos, y en particular el aislamiento del test:
 
 - `construir_pipelines_datos()` no construye el pipeline de test sin `incluir_test=True`;
 - pedir `incluir_test=True` construye el pipeline pero no lee ninguna imagen hasta que se itera, que
   es lo que hace seguro que `neumonia prepare` valide el split original sin abrir radiografías;
 - la etapa de sensibilidad y la construcción del pipeline de COMBINADO rechazan el split `test`;
-- `evaluar_test()` no recibe parámetros y su fuente no contiene ninguna referencia a un registro de
-  usos, a un flag de contaminación ni a un historial;
+- `evaluar_test()` no recibe parámetros y `neumonia test` no declara ninguna opción, porque la
+  evaluación del test es un paso normal del flujo;
 - el pipeline del test se pide con el manifiesto original y sin ninguna bandera de oversampling,
   `class_weight` o augmentation;
-- `results/registro_test.json` y `results/historico/` no existen;
-- la estrategia retirada no existe ni como código vivo ni como opción de la CLI;
+- las figuras de cada etapa se escriben en `reports/figures` con el nombre de la etapa que las
+  produce, sin nombres de etapas retiradas, y existen en disco con contenido;
+- la sensibilidad escribe un único artefacto, sin métricas de test;
 - los checkpoints de etapas distintas no se pisan entre sí, y el entrenamiento definitivo guarda
   el modelo explícitamente al no haber `validation` que dispare el `ModelCheckpoint`;
 - cada `.format()` del flujo declara exactamente las claves que le pasa, porque esos mensajes solo se
@@ -457,9 +455,8 @@ valores deterministas garantizados de principio a fin.
 - Existe desbalance entre `NORMAL` y `PNEUMONIA`.
 - Hay duplicados exactos dentro de algunos splits crudos, aunque no entre ellos.
 - El oversampling duplica patrones `NORMAL` existentes en `train` y no genera información nueva; no debe confundirse con nuevas muestras clínicas.
-- **El fine-tuning de las últimas capas empeora de forma consistente el equilibrio entre clases** con la configuración vigente (learning rate `1e-3`, batch 16, 3 épocas): las tres profundidades colapsan en `validation` con especificidad entre 0.22 y 0.47. La causa probable es la actualización de las estadísticas de Batch Normalization de los bloques descongelados. No debe considerarse una técnica fiable en este dataset, y por eso `construir_modelo_proyecto()` mantiene la base congelada.
 - **COMBINADO dobla la corrección del desbalance.** Los `class_weight` se calculan sobre la distribución original de `train`, así que no se anulan con el oversampling: el refuerzo efectivo de `NORMAL` es de 2.89x. Si se quisieran pesos que no inviertan el balance habría que fijarlos a 1.0, lo que ya no sería COMBINADO.
-- **COMBINADO no se eligió por sus métricas.** Es la única estrategia activa por decisión metodológica del proyecto, y no se mide frente a alternativas. Cualquier informe debe declararlo así: no es el resultado de una comparación.
+- **COMBINADO es una premisa metodológica, no el resultado de una comparación.** Es la única estrategia de desbalance del proyecto y no se mide frente a alternativas. Cualquier informe debe declararlo así.
 - **El Balanced Accuracy de validation está sesgado al alza.** El umbral se maximiza sobre el mismo conjunto que se reporta, de modo que el 0.9621 no es una estimación de desempeño sino un techo de selección.
 - **El gap validation → test es de ~0.055 en Balanced Accuracy** (0.9621 frente a 0.9073). El ROC-AUC apenas cae (0.9939 → 0.9728), lo que sugiere que se degrada el punto de corte y no el ordenamiento de las probabilidades.
 - El umbral `0.38` se ajustó sobre las probabilidades del modelo entrenado solo con `train`; el definitivo se reentrenó con `train + val` y sus probabilidades tienen otra escala. La transferencia del umbral es una suposición razonable, no verificada empíricamente, y es la explicación más probable del gap anterior.
@@ -482,8 +479,7 @@ valores deterministas garantizados de principio a fin.
 | Umbral de decisión | Completada (congelado en 0.38, BA validation 0.9621) |
 | Modelo definitivo | Completada (`train + val`, 3 épocas, 487 s) |
 | Test final | Completada (BA 0.9073, ROC-AUC 0.9728, matriz `[[208, 26], [29, 361]]`) |
-| Comparación de estrategias | No forma parte del flujo |
-| Testing | 93/93 pruebas aprobadas |
+| Testing | 95/95 pruebas aprobadas |
 | Documentación | Actualizada |
 | Despliegue productivo | Fuera del alcance |
 

@@ -1,7 +1,7 @@
 """Piezas compartidas de entrenamiento y evaluación del proyecto.
 
-Este módulo agrupa lo que comparten la etapa de sensibilidad y el flujo final de
-estrategias: configuración del entorno, augmentación, entrenamiento de una corrida,
+Este módulo agrupa lo que comparten la etapa de sensibilidad y el flujo final:
+configuración del entorno, augmentación, entrenamiento de una corrida,
 recolección de probabilidades y figuras de evaluación.
 
 No contiene ningún pipeline que cargue el split ``test``: la única evaluación sobre
@@ -164,11 +164,15 @@ def predecir_probabilidades(
 def guardar_matriz_confusion(
     y_true: np.ndarray,
     y_pred: np.ndarray,
-    model_name: str,
-    split_name: str,
+    titulo: str,
+    nombre_archivo: str,
     directorio: Path | None = None,
 ) -> Path:
-    """Guardar la gráfica de la matriz de confusión normalizada para un modelo."""
+    """Guardar la gráfica de la matriz de confusión de una etapa del flujo.
+
+    El nombre del archivo lo decide quien llama, de modo que cada figura se llame
+    como la etapa que la produce y no como una combinación de modelo y split.
+    """
     directorio = Path(directorio) if directorio is not None else DIRECTORIO_FIGURAS
     asegurar_directorio(directorio)
 
@@ -177,7 +181,7 @@ def guardar_matriz_confusion(
     cm_norm = cm / cm.sum(axis=1, keepdims=True)
     fig, ax = plt.subplots(figsize=(6, 6))
     imagen = ax.imshow(cm_norm, cmap="Blues")
-    ax.set_title(f"Matriz de confusión - {model_name}")
+    ax.set_title(titulo)
     ax.set_xticks([0, 1])
     ax.set_yticks([0, 1])
     ax.set_xticklabels(CLASES)
@@ -187,7 +191,7 @@ def guardar_matriz_confusion(
             ax.text(j, i, f"{cm[i, j]}", ha="center", va="center", color="black")
     fig.colorbar(imagen, ax=ax)
     plt.tight_layout()
-    ruta_salida = directorio / f"confusion_matrix_{split_name.lower()}_{model_name.lower()}.png"
+    ruta_salida = directorio / nombre_archivo
     plt.savefig(ruta_salida, dpi=200)
     plt.close(fig)
     return ruta_salida
@@ -196,25 +200,26 @@ def guardar_matriz_confusion(
 def guardar_curva_roc(
     y_true: np.ndarray,
     y_prob: np.ndarray,
-    model_name: str,
-    split_name: str,
+    titulo: str,
+    nombre_archivo: str,
     directorio: Path | None = None,
     etiqueta_adicional: str | None = None,
 ) -> Path:
-    """Guardar la curva ROC para un modelo."""
+    """Guardar la curva ROC de una etapa del flujo, con el AUC en el título."""
     directorio = Path(directorio) if directorio is not None else DIRECTORIO_FIGURAS
     asegurar_directorio(directorio)
 
     fpr, tpr, _ = roc_curve(y_true, y_prob)
+    auc = float(np.trapz(tpr, fpr))
     fig, ax = plt.subplots(figsize=(7, 6))
-    ax.plot(fpr, tpr, lw=2, label=etiqueta_adicional or f"{model_name}")
-    ax.plot([0, 1], [0, 1], linestyle="--", color="gray")
-    ax.set_title(f"Curva ROC - {model_name}")
+    ax.plot(fpr, tpr, lw=2, label=etiqueta_adicional or "modelo")
+    ax.plot([0, 1], [0, 1], linestyle="--", color="gray", label="azar")
+    ax.set_title(f"{titulo} (ROC-AUC = {auc:.4f})")
     ax.set_xlabel("Tasa de falsos positivos")
     ax.set_ylabel("Tasa de verdaderos positivos")
     ax.legend()
     plt.tight_layout()
-    ruta_salida = directorio / f"roc_curve_{split_name.lower()}_{model_name.lower()}.png"
+    ruta_salida = directorio / nombre_archivo
     plt.savefig(ruta_salida, dpi=200)
     plt.close(fig)
     return ruta_salida

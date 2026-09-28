@@ -21,7 +21,6 @@ from src.training.sensitivity import (
     construir_configuraciones,
     crear_pipelines_sensibilidad,
     normalizar_config,
-    registrar_auditoria_test,
     registrar_resultados_existentes,
     seleccionar_mejor_por_arquitectura,
 )
@@ -194,12 +193,19 @@ def test_registrar_resultados_existentes_exige_el_barrido_completo(tmp_path: Pat
         registrar_resultados_existentes(origen)
 
 
-def test_la_auditoria_de_test_fue_retirada() -> None:
-    """La sensibilidad ya no publica ninguna métrica de test."""
-    with pytest.raises(RuntimeError, match="test"):
-        registrar_auditoria_test("resultados/auditoria_test.json")
-    assert not (RUTA_RESULTADOS.parent / "sensitivity_test_audit.json").exists()
-    assert not (RUTA_RESULTADOS.parent / "model_results.json").exists()
+def test_la_sensibilidad_publica_un_unico_artefacto() -> None:
+    """La etapa de sensibilidad escribe un único artefacto, con métricas de validación."""
+    import json
+
+    assert RUTA_RESULTADOS.name == "sensitivity_results.json"
+    assert RUTA_RESULTADOS.parent.name == "models"
+    assert [ruta.name for ruta in RUTA_RESULTADOS.parent.glob("*sensitivity*")] == [
+        "sensitivity_results.json"
+    ]
+    datos = json.loads(RUTA_RESULTADOS.read_text(encoding="utf-8"))
+    assert set(datos) >= {"configuracion_base", "configuraciones", "resultados", "mejor_por_arquitectura"}
+    assert datos["splits_utilizados"] == ["train", "val"]
+    assert datos["test_utilizado"] is False
 
 
 def test_la_cli_expone_el_comando_de_sensibilidad() -> None:

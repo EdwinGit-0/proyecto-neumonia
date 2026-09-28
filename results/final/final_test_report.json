@@ -78,8 +78,9 @@
     }
   },
   "figuras": {
-    "matriz_confusion": "D:\\CIENCIA_DATOS\\Modulo_6\\Code\\proyecto-neumonia\\results\\final\\confusion_matrix_test_final.png",
-    "curva_roc": "D:\\CIENCIA_DATOS\\Modulo_6\\Code\\proyecto-neumonia\\results\\final\\roc_curve_test_final.png"
+    "matriz_confusion": "D:\\CIENCIA_DATOS\\Modulo_6\\Code\\proyecto-neumonia\\reports\\figures\\test_final_confusion_matrix.png",
+    "curva_roc": "D:\\CIENCIA_DATOS\\Modulo_6\\Code\\proyecto-neumonia\\reports\\figures\\test_final_roc_curve.png",
+    "metricas": "D:\\CIENCIA_DATOS\\Modulo_6\\Code\\proyecto-neumonia\\reports\\figures\\test_final_metrics.png"
   },
   "decision_previa": {
     "validation_ganadora": {
@@ -93,5 +94,5 @@
     },
     "criterio_umbral": "maximo balanced_accuracy en validation; empate -> mas cercano a 0.5"
   },
-  "finalizado": "2026-09-28T11:27:58.324876+00:00"
+  "finalizado": "2026-09-28T12:02:47.007299+00:00"
 }

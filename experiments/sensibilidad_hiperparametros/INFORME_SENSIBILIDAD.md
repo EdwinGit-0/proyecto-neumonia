@@ -1,6 +1,6 @@
 # Análisis de sensibilidad de hiperparámetros
 
-Generado: 2026-09-28 00:47
+Generado: 2026-09-28 08:15
 
 Experimento **aislado** realizado para responder una sola pregunta: qué efecto tiene cada hiperparámetro (learning rate, dropout y número máximo de épocas) sobre el comportamiento de VGG16, ResNet50 y MobileNetV2.
 
@@ -221,7 +221,7 @@ debe leerse como *"con learning rate 1e-4"* y no como una limitación general de
 2. **Un factor por vez.** No se exploran interacciones, ni la combinación de `lr=1e-3` con oversampling
    o class weights, que es justamente lo que evalúa la estrategia final COMBINADO.
 3. **Solo tres valores por hiperparámetro**, sin búsqueda en rejilla. No es una búsqueda exhaustiva.
-4. **Rama sin tratamiento de desbalance.** El barrido se hizo sobre los tres modelos en su
+4. **El barrido no incluye tratamiento de desbalance.** Se hizo sobre los tres modelos en su
    configuración de referencia, sin class weights ni oversampling.
 5. **Una sola partición de validación** de 1.043 imágenes con fuerte desbalance (268 NORMAL). El balanced
    accuracy es el criterio adecuado, pero un único split sigue siendo una fuente de incertidumbre.
@@ -242,6 +242,6 @@ El barrido deja tres conclusiones útiles para el proyecto:
 
 El criterio de selección derivado de este análisis es el mismo del proyecto y se aplica, en el flujo
 final, a la comparación de hiperparámetros por arquitectura. El tratamiento del desbalance no es una
-variable a comparar: el flujo final usa una estrategia única, COMBINADO, que se toma como premisa del
-proyecto y no se mide frente a sin tratamiento, oversampling o class weights por separado.
+variable de este barrido: el flujo final usa COMBINADO (oversampling 50/50 más class weights) como
+premisa metodológica cerrada.
 

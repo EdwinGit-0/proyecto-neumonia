@@ -170,6 +170,105 @@ def graficar_sensibilidad(
     return output
 
 
+def graficar_seleccion_umbral(
+    curva: list[dict[str, Any]],
+    umbral_elegido: float,
+    ruta_salida: str | Path = DIRECTORIO_FIGURAS / "threshold_selection_validation.png",
+) -> Path:
+    """Graficar la búsqueda del umbral de decisión sobre validación.
+
+    Muestra el balanced accuracy de validation para los 91 umbrales evaluados, marca
+    el congelado y referencia el 0.5 por defecto. Es la evidencia de que el umbral se
+    eligió con validation y no con el test.
+    """
+    if not curva:
+        raise ValueError("La curva de umbrales está vacía.")
+
+    umbrales = [float(item["umbral"]) for item in curva]
+    valores = [float(item["balanced_accuracy"]) for item in curva]
+    base = next(
+        (item for item in curva if abs(float(item["umbral"]) - 0.5) < 1e-9),
+        None,
+    )
+
+    fig, ax = plt.subplots(figsize=(9, 5))
+    ax.plot(umbrales, valores, lw=2, color="#4c72b0", label="Balanced Accuracy (validation)")
+    ax.axvline(float(umbral_elegido), color="#c44e52", linestyle="--", linewidth=1.5)
+    ax.text(
+        float(umbral_elegido),
+        min(valores) + 0.01,
+        f"  umbral congelado = {umbral_elegido:g}",
+        color="#c44e52",
+        fontsize=9,
+    )
+    ax.axvline(0.5, color="#555555", linestyle=":", linewidth=1.2)
+    if base is not None:
+        ax.text(
+            0.5,
+            min(valores) + 0.03,
+            f"  0.5 por defecto\n  BA = {float(base['balanced_accuracy']):.4f}",
+            color="#555555",
+            fontsize=8,
+        )
+    ax.set_xlabel("Umbral de decisión")
+    ax.set_ylabel("Balanced Accuracy (validation)")
+    ax.set_title(
+        "Selección del umbral sobre validation (1.043 imágenes); el test no interviene",
+        fontsize=12,
+    )
+    ax.set_ylim(min(valores) - 0.02, min(max(valores) + 0.02, 1.0))
+    ax.grid(linestyle=":", alpha=0.6)
+    ax.legend(loc="lower center", fontsize=9)
+    fig.tight_layout()
+    output = Path(ruta_salida)
+    asegurar_directorio(output.parent)
+    fig.savefig(output, dpi=200, bbox_inches="tight")
+    plt.close(fig)
+    return output
+
+
+def graficar_metricas_test(
+    metricas_congelado: dict[str, float],
+    metricas_referencia: dict[str, float],
+    umbral: float,
+    ruta_salida: str | Path = DIRECTORIO_FIGURAS / "test_final_metrics.png",
+) -> Path:
+    """Comparar las métricas del test entre el umbral congelado y el 0.5 por defecto."""
+    claves = ["accuracy", "precision", "recall", "specificity", "balanced_accuracy", "f1"]
+    etiquetas = [
+        "Accuracy",
+        "Precision",
+        "Recall",
+        "Specificity",
+        "Balanced Acc.",
+        "F1",
+    ]
+    congelado = [float(metricas_congelado[clave]) for clave in claves]
+    referencia = [float(metricas_referencia[clave]) for clave in claves]
+
+    eje = np.arange(len(claves))
+    ancho = 0.38
+    fig, ax = plt.subplots(figsize=(9, 5))
+    ax.bar(eje - ancho / 2, congelado, ancho, label=f"umbral congelado ({umbral:g})", color="#c44e52")
+    ax.bar(eje + ancho / 2, referencia, ancho, label="umbral 0.5", color="#4c72b0")
+    ax.set_xticks(eje)
+    ax.set_xticklabels(etiquetas, fontsize=9)
+    ax.set_ylim(0.0, 1.0)
+    ax.set_ylabel("Valor de la métrica")
+    ax.set_title("Métricas finales del test original (624 imágenes, distribución original)", fontsize=12)
+    ax.grid(axis="y", linestyle=":", alpha=0.6)
+    ax.legend(fontsize=9)
+    for posiciones, valores in ((eje - ancho / 2, congelado), (eje + ancho / 2, referencia)):
+        for posicion, valor in zip(posiciones, valores):
+            ax.text(posicion, valor + 0.015, f"{valor:.3f}", ha="center", fontsize=7)
+    fig.tight_layout()
+    output = Path(ruta_salida)
+    asegurar_directorio(output.parent)
+    fig.savefig(output, dpi=200, bbox_inches="tight")
+    plt.close(fig)
+    return output
+
+
 if __name__ == "__main__":
     result = graficar_ejemplos_augmentation()
     print(result)

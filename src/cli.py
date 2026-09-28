@@ -292,8 +292,8 @@ def test() -> None:
     click.echo(f"  Recall > 0.5: {criterio['sensibilidad_sobre_azar']}")
     click.echo(f"  Specificity > 0.5: {criterio['especificidad_sobre_azar']}")
     click.echo(f"\nInforme: {RUTA_REPORTE_TEST}")
-    click.echo(f"Figuras: {reporte['figuras']['matriz_confusion']}")
-    click.echo(f"         {reporte['figuras']['curva_roc']}")
+    for nombre, ruta in reporte["figuras"].items():
+        click.echo(f"Figura {nombre}: {ruta}")
 
 
 @cli.command()
@@ -330,10 +330,11 @@ def evaluar() -> None:
 
     if RUTA_UMBRAL.exists():
         umbral = json.loads(RUTA_UMBRAL.read_text(encoding="utf-8"))
-        click.echo(f"\nUmbral congelado: {umbral['umbral']}")
-        click.echo(f"  Criterio: {umbral['criterio']}")
-        click.echo(f"  Origen: {umbral['conjunto_origen']} ({umbral['validation_n']} imagenes)")
-        click.echo(f"  Artefacto: {RUTA_UMBRAL}")
+    click.echo(f"\nUmbral congelado: {umbral['umbral']}")
+    click.echo(f"  Criterio: {umbral['criterio']}")
+    click.echo(f"  Origen: {umbral['conjunto_origen']} ({umbral['validation_n']} imagenes)")
+    click.echo(f"  Artefacto: {RUTA_UMBRAL}")
+    click.echo(f"  Figura: {umbral['figura_seleccion_umbral']}")
 
     if RUTA_DECISION.exists():
         decision = json.loads(RUTA_DECISION.read_text(encoding="utf-8"))
@@ -382,8 +383,8 @@ def run(recalcular_combinado: bool) -> None:
     """Ejecutar el flujo completo, incluida la evaluación del test final.
 
     El orden es: EDA, preparación, augmentación, sensibilidad, COMBINADO sobre train,
-    umbral congelado a partir de validation, modelo definitivo sobre train + val y
-    evaluación del test.
+    umbral congelado a partir de validation, modelo definitivo sobre train + val,
+    evaluación del test original y lectura del informe. Cierra con la suite de pruebas.
     """
     click.echo("=== Flujo completo del proyecto (incluye test final) ===")
     eda()
@@ -394,6 +395,7 @@ def run(recalcular_combinado: bool) -> None:
     umbral()
     final()
     test()
+    evaluar()
     test_suite()
     click.echo("=== Flujo finalizado. Revise 'neumonia evaluar' para el informe de test. ===")
 

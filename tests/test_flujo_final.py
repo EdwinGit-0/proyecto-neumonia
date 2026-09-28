@@ -9,6 +9,7 @@ búsqueda de umbral con datos sintéticos.
 from __future__ import annotations
 
 import json
+import inspect
 import string
 from pathlib import Path
 from typing import Any
@@ -80,43 +81,27 @@ def test_la_estrategia_unica_es_combinado() -> None:
     assert estrategia["proporcion_objetivo"] == "50/50"
 
 
-def test_no_existe_la_comparacion_de_estrategias() -> None:
-    """La comparación/ranking de estrategias debe haber desaparecido del flujo."""
-    for nombre_atributo in ("ESTRATEGIAS", "NOMBRES_ESTRATEGIAS", "estrategia_por_id",
-                            "ejecutar_estrategias", "seleccionar_ganador_por_arquitectura",
-                            "escribir_tabla_csv", "clave_orden", "RUTA_TABLA", "RUTA_RESULTADOS"):
+def test_la_estrategia_del_proyecto_es_unica_y_no_es_parametro() -> None:
+    """La estrategia COMBINADO está cerrada: el flujo no expone variantes seleccionables."""
+    assert tratamiento_desbalance.NOMBRE_ESTRATEGIA == "combinado"
+    estrategia = tratamiento_desbalance.ESTRATEGIA_COMBINADO
+    assert estrategia["id"] == "combinado"
+    assert estrategia["oversampling"] is True
+    assert estrategia["class_weight"] is True
+    assert estrategia["proporcion_objetivo"] == "50/50"
+    assert tratamiento_desbalance.SPLITS_PERMITIDOS == ("train", "val")
+    firma = inspect.signature(flujo_final.construir_pipeline_combinado)
+    assert "estrategia" not in firma.parameters
+
+
+def test_el_flujo_no_expone_una_rejilla_de_variantes() -> None:
+    """El módulo entrena una única corrida, sin ranking ni selección de ganador."""
+    assert callable(flujo_final.ejecutar_combinado)
+    for nombre_atributo in ("seleccionar_ganador_por_arquitectura", "clave_orden",
+                            "estrategia_por_id", "ejecutar_variantes"):
         assert not hasattr(flujo_final, nombre_atributo), (
-            f"flujo_final todavia expone {nombre_atributo}, que pertenece a la comparacion de estrategias"
+            f"flujo_final expone {nombre_atributo}, que implicaría comparar variantes"
         )
-
-
-def test_las_estrategias_retiradas_no_existen_como_opciones() -> None:
-    """Los identificadores de las alternativas retiradas no deben quedar como código vivo.
-
-    Se ignoran docstrings y comentarios: el módulo menciona ``sin_tratamiento`` a
-    propósito, para documentar que el test ya se evaluó con esa estrategia. Lo que no
-    debe existir es la alternativa como opción seleccionable.
-    """
-    import io
-    import tokenize
-    from pathlib import Path as _Path
-
-    import src.training.flujo_final as modulo_flujo
-    import src.training.tratamiento_desbalance as modulo_tratamiento
-
-    for modulo in (modulo_flujo, modulo_tratamiento):
-        ruta = _Path(modulo.__file__)
-        with open(ruta, "rb") as archivo:
-            fuente = archivo.read()
-        codigo = "".join(
-            token.string
-            for token in tokenize.tokenize(io.BytesIO(fuente).readline)
-            if token.type not in (tokenize.COMMENT, tokenize.STRING)
-        )
-        for retirado in ("sin_tratamiento", "ganador_global", "mejor_por_arquitectura"):
-            assert retirado not in codigo, (
-                f"{retirado} sigue presente como codigo en {ruta.name}"
-            )
 
 
 def test_el_flujo_de_entrenamiento_rechaza_el_test() -> None:
@@ -314,12 +299,10 @@ def test_la_config_se_toma_de_la_sensibilidad_y_se_verifica() -> None:
     assert flujo_final.MODELO_FINAL == "MobileNetV2"
 
 
-def test_las_rutas_del_flujo_no_terminan_en_test() -> None:
-    """El umbral se guarda junto al resultado final, no junto a los artefactos de estrategias."""
+def test_las_rutas_del_flujo_viven_en_results_final() -> None:
+    """El umbral y los artefactos del flujo se guardan bajo ``results/final``."""
     assert flujo_final.RUTA_UMBRAL.name == "umbral_decision.json"
     assert flujo_final.RUTA_UMBRAL.parent.name == "final"
-    # El umbral ya no vive junto a los artefactos de estrategias.
-    assert "estrategias" not in str(flujo_final.RUTA_UMBRAL)
     assert flujo_final.RUTA_COMBINADO.parent.name == "final"
 
 
@@ -341,36 +324,19 @@ def test_evaluar_test_exige_el_modelo_definitivo(
         flujo_final.evaluar_test()
 
 
-def test_el_flujo_no_conserva_mecanismo_de_bloqueo_del_test() -> None:
-    """El test es un conjunto de medición normal: nada en el código lo bloquea.
-
-    Este proyecto eliminó el registro de usos y el guard de contaminación, así que
-    ``evaluar_test`` no debe recibir ningún parámetro de reconocimiento ni consultar
-    ningún historial previo.
-    """
-    import inspect
-
-    parametros = inspect.signature(flujo_final.evaluar_test).parameters
-    assert list(parametros) == [], f"evaluar_test no debe pedir parámetros: {list(parametros)}"
-
-    fuente = inspect.getsource(flujo_final)
-    for prohibido in (
-        "registro_test",
-        "anotar_uso_test",
-        "consultar_registro_test",
-        "reconocer_contaminacion",
-        "test_ya_utilizado",
-        "evaluar_test_una_vez",
-    ):
-        assert prohibido not in fuente, f"queda una referencia a {prohibido!r}"
+def test_el_test_se_evalua_una_sola_vez_al_final() -> None:
+    """``evaluar_test`` es un paso normal del flujo y no depende de ninguna otra llamada."""
+    assert list(inspect.signature(flujo_final.evaluar_test).parameters) == []
+    assert flujo_final.SPLIT_TEST == "test"
+    assert flujo_final.SPLITS_MEDICION == ("val",)
 
 
-def test_la_evaluacion_del_test_no_depende_de_ningun_historial() -> None:
-    """``results/registro_test.json`` ya no existe ni debe volver a crearse."""
-    from src.utils.paths import DIRECTORIO_RESULTADOS
-
-    assert not (DIRECTORIO_RESULTADOS / "registro_test.json").exists()
-    assert not (DIRECTORIO_RESULTADOS / "historico").exists()
+def test_la_evaluacion_del_test_escribe_solo_sus_artefactos() -> None:
+    """La evaluación del test deja únicamente el informe y el CSV de métricas."""
+    assert flujo_final.RUTA_REPORTE_TEST.name == "final_test_report.json"
+    assert flujo_final.RUTA_REPORTE_TEST.parent.name == "final"
+    assert flujo_final.RUTA_METRICAS_TEST.name == "final_test_metrics.csv"
+    assert flujo_final.RUTA_METRICAS_TEST.parent.name == "final"
 
 
 def test_la_evaluacion_del_test_no_aplica_tratamiento_de_desbalance(
@@ -432,10 +398,9 @@ def test_la_cli_expone_las_etapas_del_flujo() -> None:
 
     ayuda = CliRunner().invoke(cli, ["--help"])
     assert ayuda.exit_code == 0
-    for comando in ("combinado", "umbral", "final", "test", "evaluar", "run"):
+    for comando in ("eda", "prepare", "augment", "sensibilidad", "combinado", "umbral",
+                    "final", "test", "evaluar", "run", "test-suite"):
         assert comando in ayuda.output
-    # La comparación de estrategias ya no es un comando.
-    assert "estrategias" not in ayuda.output
 
 
 def test_la_cli_de_combinado_muestra_el_refuerzo_de_la_minoritaria() -> None:
@@ -448,16 +413,86 @@ def test_la_cli_de_combinado_muestra_el_refuerzo_de_la_minoritaria() -> None:
     assert "COMBINADO" in resultado.output
 
 
-def test_la_cli_de_test_no_pide_reconocer_contaminacion() -> None:
-    """El comando ``test`` se ejecuta normal, sin banderas de historial."""
+def test_la_cli_de_test_no_toma_opciones() -> None:
+    """El comando ``test`` se ejecuta normal: no declara ninguna opción."""
     from click.testing import CliRunner
 
     from src.cli import cli
 
     resultado = CliRunner().invoke(cli, ["test", "--help"])
     assert resultado.exit_code == 0
-    assert "--reconocer-contaminacion" not in resultado.output
-    assert "contaminaci" not in resultado.output.lower()
+    assert resultado.output.count("--") == 1
+
+
+def test_las_figuras_del_flujo_viven_en_reports_figures(tmp_path: Path) -> None:
+    """Cada figura se llama como la etapa que la produce y vive en ``reports/figures``."""
+    from src.training.pipeline_entrenamiento import guardar_curva_roc, guardar_matriz_confusion
+    from src.training import flujo_final as ff
+    from src.utils.paths import DIRECTORIO_FIGURAS
+    from src.visualization.visualize import graficar_metricas_test, graficar_seleccion_umbral
+
+    y_true = np.array([0, 0, 1, 1])
+    y_prob = np.array([0.1, 0.2, 0.8, 0.9])
+    y_pred = (y_prob >= 0.5).astype(int)
+
+    cm = guardar_matriz_confusion(y_true, y_pred, "Validation", ff.FIGURA_VALIDACION_CONFUSION, directorio=tmp_path)
+    roc = guardar_curva_roc(y_true, y_prob, "Validation", ff.FIGURA_VALIDACION_ROC, directorio=tmp_path)
+    umbral = graficar_seleccion_umbral(
+        [{"umbral": 0.3, "balanced_accuracy": 0.6}, {"umbral": 0.38, "balanced_accuracy": 0.9}, {"umbral": 0.5, "balanced_accuracy": 0.8}],
+        0.38,
+        ruta_salida=tmp_path / ff.FIGURA_UMBRAL,
+    )
+    metricas = graficar_metricas_test(
+        {"accuracy": 0.9, "precision": 0.9, "recall": 0.9, "specificity": 0.8, "balanced_accuracy": 0.85, "f1": 0.9},
+        {"accuracy": 0.85, "precision": 0.9, "recall": 0.8, "specificity": 0.85, "balanced_accuracy": 0.82, "f1": 0.85},
+        0.38,
+        ruta_salida=tmp_path / ff.FIGURA_TEST_METRICAS,
+    )
+
+    for figura in (cm, roc, umbral, metricas):
+        assert figura.parent == tmp_path
+        assert figura.exists() and figura.stat().st_size > 0
+
+    # Los nombres por defecto de cada función apuntan al directorio de figuras del proyecto.
+    assert (DIRECTORIO_FIGURAS / ff.FIGURA_VALIDACION_CONFUSION).name == ff.FIGURA_VALIDACION_CONFUSION
+    assert ff.FIGURA_UMBRAL == "threshold_selection_validation.png"
+    assert ff.FIGURA_TEST_CONFUSION == "test_final_confusion_matrix.png"
+    assert ff.FIGURA_TEST_ROC == "test_final_roc_curve.png"
+    assert ff.FIGURA_TEST_METRICAS == "test_final_metrics.png"
+
+    nombres_figura = (
+        ff.FIGURA_VALIDACION_CONFUSION,
+        ff.FIGURA_VALIDACION_ROC,
+        ff.FIGURA_UMBRAL,
+        ff.FIGURA_TEST_CONFUSION,
+        ff.FIGURA_TEST_ROC,
+        ff.FIGURA_TEST_METRICAS,
+    )
+    assert len(set(nombres_figura)) == len(nombres_figura)
+    for nombre in nombres_figura:
+        assert nombre.endswith(".png")
+        assert " " not in nombre and nombre == nombre.lower()
+
+
+def test_las_figuras_del_flujo_actual_existen_en_disco() -> None:
+    """Las figuras que documenta el proyecto están regeneradas y no están vacías."""
+    from src.training import flujo_final as ff
+    from src.utils.paths import DIRECTORIO_FIGURAS
+
+    for nombre in (
+        ff.FIGURA_VALIDACION_CONFUSION,
+        ff.FIGURA_VALIDACION_ROC,
+        ff.FIGURA_UMBRAL,
+        ff.FIGURA_TEST_CONFUSION,
+        ff.FIGURA_TEST_ROC,
+        ff.FIGURA_TEST_METRICAS,
+        "sensitivity_validation.png",
+        "data_augmentation_examples.png",
+        "dataset_distribution.png",
+    ):
+        ruta = DIRECTORIO_FIGURAS / nombre
+        assert ruta.exists(), f"falta la figura {nombre}"
+        assert ruta.stat().st_size > 0, f"la figura {nombre} está vacía"
 
 
 def test_los_format_de_este_modulo_no_tienen_claves_renombradas() -> None:

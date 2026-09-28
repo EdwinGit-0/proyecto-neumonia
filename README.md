@@ -76,15 +76,15 @@ La augmentación se aplica **únicamente al conjunto de entrenamiento**:
 
 No se aplica augmentación a `validation` ni a `test`.
 
-El `RandomFlip("horizontal")` fue descartado porque una inversión horizontal puede alterar información de lateralidad anatómica y marcadores `L/R` presentes en algunas radiografías.
+El `RandomFlip("horizontal")` no se usa porque una inversión horizontal puede alterar información de lateralidad anatómica y marcadores `L/R` presentes en algunas radiografías.
 
-El entrenamiento original de los tres modelos no utiliza oversampling, undersampling ni class weights. En la etapa de optimización se aplicó **oversampling de la clase minoritaria `NORMAL` únicamente sobre el `train`** del modelo final, y se probó también **class weights** como variante separada (ver sección 7). En ningún momento se modificaron `validation` ni `test`.
+El tratamiento de desbalance del proyecto es **COMBINADO** y se aplica **únicamente sobre el `train`**: oversampling 50/50 de la minoritaria `NORMAL` más `class_weight` en la función de pérdida. `validation` y `test` conservan su distribución original y nunca se reponderan.
 
 ---
 
 ## 4. Modelos
 
-Se compararon tres arquitecturas mediante transferencia de aprendizaje con pesos de ImageNet:
+Se evaluaron tres arquitecturas mediante transferencia de aprendizaje con pesos de ImageNet:
 
 * **VGG16**
 * **ResNet50**
@@ -102,26 +102,27 @@ Dropout(0.3)
 Dense(1, Sigmoid)
 ```
 
+El flujo final usa **MobileNetV2**: la sensibilidad de hiperparámetros la eligió y su configuración
+queda cerrada en `models/sensitivity_results.json`.
+
 ### Configuración de entrenamiento
 
 | Parámetro            | Configuración           |
 | -------------------- | ----------------------- |
 | Pérdida              | Binary Crossentropy     |
 | Optimizador          | Adam                    |
-| Learning rate        | `1e-3` (único valor vigente; cerrado por la sensibilidad) |
-| Dropout              | `0.3` (único valor vigente; cerrado por la sensibilidad) |
+| Learning rate        | `1e-3` (cerrado por la sensibilidad) |
+| Dropout              | `0.3` (cerrado por la sensibilidad) |
 | Batch size           | `16`                    |
-| Épocas               | `3` (único valor vigente; cerrado por la sensibilidad) |
+| Épocas               | `3` (cerrado por la sensibilidad) |
 | Semilla              | `42`                    |
 | Checkpoint           | `val_loss`              |
 | Early Stopping       | paciencia 3             |
 | ReduceLROnPlateau    | factor 0.5, paciencia 2 |
 | Learning rate mínimo | `1e-6`                  |
 
-La sensibilidad de hiperparámetros (21 entrenamientos) exploró learning rate, dropout y número de
-épocas, y cerró el espacio de búsqueda en `learning_rate=1e-3`, `dropout=0.3` y `3` épocas. Esa
-configuración es la **única** que usan las 12 Strategy Runs y el modelo definitivo, de modo que la
-única diferencia entre corridas sea la estrategia de tratamiento del desbalance.
+El modelo definitivo se reentrena sobre `train + val` con el número de épocas ya decidido, así que en
+esa etapa el checkpoint guarda los pesos del último epoch.
 
 ---
 
@@ -165,8 +166,8 @@ volver a entrenar lo ya resuelto.
 | 5 | Test final                                   | modelo definitivo + umbral congelado      | `results/final/final_test_report.json`        | No               |
 
 La etapa 1 exploró learning rate, dropout y número de épocas sobre las tres arquitecturas
-(7 configuraciones, 21 entrenamientos, sin fine-tuning) y cerró el espacio de búsqueda. Sus
-ganadores por arquitectura se leen de `models/sensitivity_results.json` **sin reentrenar nada**:
+(7 configuraciones, 21 entrenamientos) y cerró el espacio de búsqueda. Sus ganadores por
+arquitectura se leen de `models/sensitivity_results.json` **sin reentrenar nada**:
 
 | Arquitectura | Learning rate | Dropout | Épocas | Balanced Accuracy (validation) |
 | ------------ | -------------: | ------: | -----: | ------------------------------: |
@@ -174,10 +175,9 @@ ganadores por arquitectura se leen de `models/sensitivity_results.json` **sin re
 | ResNet50     |            `1e-3` |    `0.3` |    `3` |                        0.736625 |
 | VGG16        |            `1e-3` |    `0.3` |    `3` |                        0.939913 |
 
-**MobileNetV2 es la arquitectura del modelo final, y esa elección no se vuelve a comparar en el flujo
-de desbalance.** COMBINADO es la única estrategia activa: no existe comando ni código que la mida
-frente a sin tratamiento, oversampling o class weights por separado. Cualquier informe debe declarar
-que la estrategia es una premisa del proyecto, no el resultado de una comparación.
+**MobileNetV2 es la arquitectura del modelo final.** COMBINADO (oversampling 50/50 sobre `train`
+más `class_weight` en la pérdida) es la única estrategia de desbalance del proyecto: es una premisa
+metodológica cerrada, no el resultado de comparar variantes. Cualquier informe debe declararlo así.
 
 La etapa 2 entrena **una sola** corrida, MobileNetV2 con COMBINADO:
 
@@ -210,17 +210,21 @@ results/final/final_model/best_model.keras
 results/final/final_model_training.json
 results/final/final_test_report.json            # informe del test final
 results/final/final_test_metrics.csv
-results/final/confusion_matrix_test_final.png
-results/final/roc_curve_test_final.png
 ```
 
-Las ejecuciones anteriores que usaban el test para decidir se eliminaron del repositorio: no son
-reproducibles, no eran comparables y sus artefactos (`models/optimization_results.json`,
-`models/model_results.json`, `models/historico/`, `experiments/optimizacion_pendiente_mobilenetv2/`)
-ya no existen.
+Las figuras se generan en `reports/figures` y se nombran según la etapa que las produce:
 
-Del historial anterior solo se conserva `experiments/sensibilidad_hiperparametros/INFORME_SENSIBILIDAD.md`:
-informe de las 21 corridas de sensibilidad, sin métricas de test.
+| Figura | Etapa |
+| ------ | ----- |
+| `dataset_distribution.png`, `file_size_distribution.png`, `image_dimensions.png`, `sample_normal.png`, `sample_pneumonia.png` | EDA |
+| `data_augmentation_examples.png` | `augment` |
+| `sensitivity_validation.png` | `sensibilidad` |
+| `validation_combinado_confusion_matrix.png`, `validation_combinado_roc_curve.png` | `combinado` |
+| `threshold_selection_validation.png` | `umbral` |
+| `test_final_confusion_matrix.png`, `test_final_roc_curve.png`, `test_final_metrics.png` | `test` |
+
+El informe de la etapa `sensibilidad` queda en
+`experiments/sensibilidad_hiperparametros/INFORME_SENSIBILIDAD.md`; no contiene métricas de test.
 
 ### Configuración de entrenamiento
 
@@ -278,13 +282,16 @@ Matriz de confusión: `[[267, 1], [67, 708]]` (TN 267, FP 1, FN 67, TP 708).
 La etapa 3 recorrió 91 umbrales (0.05 a 0.95 en pasos de 0.01, más 0.50 explícito) sobre el modelo
 COMBINADO, todavía sin reentrenar, y **congeló** el mejor por Balanced Accuracy:
 
-| Umbral | Balanced Accuracy |   F1 | Accuracy | Precision | Specificity | Recall |
-| -----: | ---------------: | ---: | -------: | -------: | ----------: | -----: |
-|  0.50 |           0.9549 | 0.9542 |  0.9348 |  0.9986 |      0.9963 | 0.9135 |
-| **0.38** |       **0.9621** | 0.9620 |  0.9434 |  0.9960 |      0.9776 | 0.9466 |
-| Δ      |       +0.0072 | +0.0078 | +0.0086 | -0.0026 |     -0.0187 | +0.0331 |
+| Umbral | Balanced Acc |   F1 | Accuracy | Precision | Specificity | Recall |
+| -----: | -----------: | ---: | -------: | -------: | ----------: | -----: |
+|  0.50 |       0.9549 | 0.9542 |  0.9348 |  0.9986 |      0.9963 | 0.9135 |
+| **0.38** |   **0.9621** | **0.9647** | **0.9492** | **0.9959** | **0.9888** | **0.9355** |
+| Δ      |     +0.0072 | +0.0105 | +0.0144 | -0.0027 |     -0.0075 | +0.0220 |
 
-Artefacto: `results/final/umbral_decision.json`.
+Con el umbral congelado, la matriz de confusión de validation es `[[265, 3], [50, 725]]`
+(TN 265, FP 3, FN 50, TP 725).
+
+Artefacto: `results/final/umbral_decision.json`. Figura: `threshold_selection_validation.png`.
 
 > **El Δ también hay que leerlo con cuidado.** El umbral se eligió maximizando Balanced Accuracy sobre
 > validation, y ese mismo conjunto es el que se reporta: el `0.9621` está **sesgado al alza**. El 0.38
@@ -318,8 +325,8 @@ accuracy `0.9006`, precision `0.9432`, recall `0.8949`, specificity `0.9103`, F1
 El criterio de éxito se cumple en las tres condiciones: supera el baseline de Balanced Accuracy
 (`0.5000`), recall `0.9256 > 0.5` y specificity `0.8889 > 0.5`.
 
-Artefactos: `results/final/final_test_report.json`, `final_test_metrics.csv`,
-`confusion_matrix_test_final.png`, `roc_curve_test_final.png`, `test_y_true.npy`, `test_y_prob.npy`.
+Artefactos: `results/final/final_test_report.json` y `final_test_metrics.csv`.
+Figuras: `test_final_confusion_matrix.png`, `test_final_roc_curve.png`, `test_final_metrics.png`.
 
 **Orden respecto al umbral.** El umbral se congeló en la etapa 3, antes de reentrenar el modelo
 definitivo y antes de leer el test. Cuando la evaluación ocurre, la arquitectura, la estrategia, los
@@ -333,11 +340,7 @@ hiperparámetros y el punto de corte ya están cerrados: la evaluación no reali
 
 ### Reproducibilidad de la etapa
 
-La etapa se corrigió para que sea reproducible. Antes, el `shuffle` del train y las capas de
-augmentation se construían **sin semilla** y la semilla global se fijaba **después** de crear los
-pipelines, de modo que dos ejecuciones del mismo código entrenaban sobre imágenes distintas.
-
-Ahora `src/utils/reproducibility.py` centraliza el control: `SEMILLA = 42`,
+`src/utils/reproducibility.py` centraliza el control: `SEMILLA = 42`,
 `tf.config.experimental.enable_op_determinism()`, `seed=SEMILLA` en cada `shuffle` y en
 `RandomRotation` / `RandomZoom`, y `map(..., deterministic=True)`. El orden en cada corrida es
 `clear_session()` → `reiniciar_semilla()` → construir pipeline → construir modelo, para que las
@@ -351,16 +354,6 @@ los mismos pesos. Cubierto por `tests/test_reproducibilidad.py`.
 > evaluación del test, unos 20 s. No se ha ejecutado una segunda corrida completa para confirmar la
 > igualdad exacta de las métricas: lo verificado es el determinismo del pipeline de datos y de la
 > inicialización del modelo, no la identidad bit a bit de los pesos entrenados.
-
-### Nota sobre el fine-tuning descartado
-
-La estrategia de fine-tuning se evaluó en etapas previas y quedó **fuera** del flujo vigente: con
-learning rate `1e-3` y 3 épocas, las tres profundidades colapsaban en validation (recall 1.0 con
-especificidad entre 0.22 y 0.47). Ese patrón se reprodujo en corridas con y sin semilla, lo que
-apunta a la actualización de las estadísticas de Batch Normalization de los bloques descongelados
-(batch 16, learning rate `1e-3`, 3 épocas) y no al azar del pipeline. Motivó mantener la base
-congelada en `construir_modelo_proyecto()`. Las ejecuciones que lo midieron y sus artefactos ya no
-existen en el repositorio: no forman parte de ningún resultado vigente.
 
 ### Artefactos de resultados
 
@@ -526,11 +519,15 @@ neumonia sensibilidad --recalcular
 > Las 21 corridas ya están completas y **no deben repetirse**: la etapa 2 parte de
 > `models/sensitivity_results.json`.
 
-### Estrategia única: COMBINADO
+### COMBINADO sobre train
 
-No existe comando ni código para comparar estrategias. COMBINADO (oversampling 50/50 sobre `train`
-más `class_weight`) es la única estrategia activa del proyecto; `neumonia estrategias` se eliminó
-junto con la comparación de cuatro variantes.
+```powershell
+neumonia combinado
+```
+
+Entrena MobileNetV2 con COMBINADO (oversampling 50/50 sobre `train` más `class_weight`) y mide
+exclusivamente sobre `validation`, que queda intacta. Es la única etapa de entrenamiento sobre `train`
+del flujo: la estrategia es una premisa del proyecto, no el resultado de comparar variantes.
 
 ### Umbral de decisión
 
@@ -540,7 +537,8 @@ neumonia umbral
 
 Recorre 91 umbrales sobre `validation` con el modelo COMBINADO, **sin** mirar el test, y congela el
 mejor por Balanced Accuracy en `results/final/umbral_decision.json`. Para la ejecución validada
-quedó en `0.38`, con un Δ de `+0.0072` frente al 0.5 por defecto.
+quedó en `0.38`, con un Δ de `+0.0072` frente al 0.5 por defecto. Genera la figura
+`threshold_selection_validation.png`.
 
 ### Modelo definitivo
 
@@ -559,8 +557,9 @@ neumonia test
 
 Evalúa el modelo definitivo sobre el test original con el umbral congelado. Se ejecuta como cualquier
 otra etapa: sin banderas de confirmación y sin consultar historial. Aplica el umbral, escribe
-`results/final/final_test_report.json` y `final_test_metrics.csv`, y genera la matriz de confusión y
-la curva ROC. No aplica oversampling, `class_weight` ni augmentation al test. Ver la sección 7-bis.
+`results/final/final_test_report.json` y `final_test_metrics.csv`, y genera la matriz de confusión, la
+curva ROC y el gráfico de métricas. No aplica oversampling, `class_weight` ni augmentation al test.
+Ver la sección 7-bis.
 
 ### Consultar resultados
 
@@ -584,23 +583,16 @@ neumonia run
 
 Encadena el EDA, la preparación de datos, la augmentación, la sensibilidad (sin repetirla si ya
 existe), COMBINADO, el umbral, el modelo definitivo, la evaluación del test y la suite de pruebas.
-
-`neumonia run` **se detiene antes del test**: no encadena `neumonia test` porque el test original ya
-fue evaluado. Para consultar resultados existentes usar `neumonia evaluar`.
-
-Los comandos `train`, `tune`, `desbalance`, `optimizar`, `estrategias` y `test-inicial` se han
-**eliminado de la CLI**: pertenecían a flujos anteriores que comparaban estrategias o usaban el test
-para decidir. El único registro conservado de esa etapa es el informe de sensibilidad, que no
-contiene métricas de test.
+El test es la última etapa: el umbral ya está congelado cuando se lee.
 
 ---
 
 ## 11. Testing
 
-El proyecto cuenta con **93 pruebas automatizadas**, todas aprobadas:
+El proyecto cuenta con **95 pruebas automatizadas**, todas aprobadas:
 
 ```text
-93 passed, 109 warnings
+95 passed, 109 warnings
 ```
 
 Las pruebas cubren, entre otros aspectos:
@@ -631,9 +623,10 @@ Las pruebas cubren, entre otros aspectos:
 * rechazo de `test` en la etapa de sensibilidad y en la construcción del pipeline de COMBINADO;
 * que el pipeline del test se pida con el manifiesto original y **sin** ninguna bandera de
   oversampling, `class_weight` o augmentation;
-* que `evaluar_test()` no reciba parámetros y que su fuente no contenga referencias a registros de
-  usos, flags de contaminación ni historiales, y que `neumonia test` no exponga banderas;
-* que la estrategia retirada no exista ni como código vivo ni como opción de la CLI;
+* que `evaluar_test()` no reciba parámetros y que `neumonia test` no exponga ninguna opción;
+* que las figuras de cada etapa vivan en `reports/figures` con el nombre de la etapa que las produce;
+* que las figuras del flujo actual existan en disco y no estén vacías;
+* que la sensibilidad escriba un único artefacto, sin métricas de test;
 * que los checkpoints de etapas distintas no se pisen entre sí, y que el entrenamiento definitivo
   guarde el modelo explícitamente al no haber `validation` que dispare el `ModelCheckpoint`;
 * que cada `.format()` del flujo declare exactamente las claves que le pasa, ya que esos mensajes
@@ -699,11 +692,8 @@ La documentación técnica adicional está en `references/documentacion_proyecto
   distribución original de `train`, así que no se anulan con el oversampling: el refuerzo efectivo de
   `NORMAL` es de 2.89x. Si se quisieran pesos que no inviertan el balance habría que fijarlos a 1.0,
   lo que ya no sería COMBINADO.
-* **COMBINADO no se eligió por sus métricas.** Es la única estrategia activa por decisión
-  metodológica del proyecto y no se mide frente a alternativas. Cualquier informe debe declararlo así.
-* El fine-tuning de las últimas capas **empeora de forma consistente** el equilibrio entre clases:
-  con learning rate `1e-3` y 3 épocas, las tres profundidades colapsan en validation (especificidad
-  entre 0.22 y 0.47). No debe considerarse una técnica fiable en este dataset.
+* **COMBINADO es una premisa metodológica, no una comparación.** Es la única estrategia de desbalance
+  del proyecto y no se mide frente a alternativas. Cualquier informe debe declararlo así.
 * **El Balanced Accuracy de validation está sesgado al alza.** El umbral se maximiza sobre el mismo
   conjunto que se reporta, de modo que el `0.9621` es un techo de selección, no una estimación de
   desempeño.
@@ -740,8 +730,7 @@ La documentación técnica adicional está en `references/documentacion_proyecto
 | Umbral de decisión    | Completada (congelado en `0.38`, BA validation 0.9621) |
 | Modelo definitivo     | Completada (`train + val`, 3 épocas, 487 s) |
 | Test final            | Completada (BA 0.9073, ROC-AUC 0.9728, matriz `[[208, 26], [29, 361]]`) |
-| Comparación de estrategias | No forma parte del flujo |
-| Testing               | Automatizado (93 pruebas) |
+| Testing               | Automatizado (95 pruebas) |
 | Documentación         | Actualizada             |
 | Despliegue productivo | Fuera del alcance       |
 

@@ -851,8 +851,9 @@
       "specificity": 1.0
     }
   ],
+  "figura_seleccion_umbral": "D:\\CIENCIA_DATOS\\Modulo_6\\Code\\proyecto-neumonia\\reports\\figures\\threshold_selection_validation.png",
   "advertencia_optimismo": "El umbral se eligio maximizando balanced_accuracy sobre validation, y ese mismo conjunto es el que se reporta. El balanced_accuracy de validation esta por tanto optimistamente sesgado al alza. Con +0.0072 frente a 0.5, el umbral 0.5 rinde practicamente igual y la diferencia no es interpretable.",
   "test_utilizado": false,
   "congelado": true,
-  "finalizado": "2026-09-28T11:19:06.688792+00:00"
+  "finalizado": "2026-09-28T12:02:02.864597+00:00"
 }

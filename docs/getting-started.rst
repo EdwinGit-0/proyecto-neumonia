@@ -22,6 +22,7 @@ Después se puede ejecutar el flujo completo con la CLI del proyecto:
    neumonia umbral
    neumonia final
    neumonia test
+   neumonia evaluar
    neumonia test-suite
 
 ``neumonia combinado``, ``neumonia umbral`` y ``neumonia final`` son las tres
@@ -30,7 +31,8 @@ etapas del flujo de decisión y se ejecutan en ese orden. Las tres solo usan
 
 ``neumonia test`` cierra el flujo: evalúa el test original (624 imágenes) con el
 modelo definitivo y el umbral ya congelado. No interviene en ninguna decisión
-previa y no lleva banderas de confirmación.
+previa y no lleva opciones. ``neumonia evaluar`` imprime el informe guardado sin
+volver a entrenar ni a predecir.
 
 En este repositorio el entorno ya está preparado en ``.venv``. Si el Python del
 sistema no tiene TensorFlow, usar el intérprete del entorno:

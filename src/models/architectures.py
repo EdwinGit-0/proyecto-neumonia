@@ -30,8 +30,8 @@ def construir_modelo_proyecto(
     Es el único punto donde se construye una arquitectura del proyecto: base ImageNet
     congelada y cabeza GAP -> Dense(128, relu) -> Dropout -> Dense(1, sigmoid) compilada
     con Adam y ``binary_crossentropy``. Lo usan tanto la etapa de sensibilidad como el
-    flujo final de estrategias, de modo que la única diferencia entre corridas sea el
-    valor del hiperparámetro que se esté variando.
+    flujo final, de modo que la única diferencia entre corridas sea el valor del
+    hiperparámetro que se esté variando.
     """
     if model_name not in NOMBRES_MODELOS:
         raise ValueError(f"Modelo no compatible: {model_name}. Modelos disponibles: {sorted(NOMBRES_MODELOS)}")

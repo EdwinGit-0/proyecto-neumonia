@@ -46,7 +46,7 @@ neumonia final          # 7. Reentrena el definitivo sobre train + val
    neumonia evaluar        # 9. Consulta de resultados
 ```
 
-`neumonia run` encadena todas las etapas, incluida la evaluación del test, y termina con la suite de
+`neumonia run` encadena las nueve etapas, incluida la evaluación del test, y cierra con la suite de
 pruebas.
 
 ---
@@ -144,8 +144,7 @@ neumonia combinado
 ```
 
 Lee la mejor configuración por arquitectura de la sensibilidad y entrena **una sola** corrida:
-MobileNetV2 con COMBINADO, medido en `validation`. No hay rejilla de estrategias ni de
-arquitecturas. Para rehacerla: `neumonia combinado --recalcular`.
+MobileNetV2 con COMBINADO, medido en `validation`. Para rehacerla: `neumonia combinado --recalcular`.
 
 ### 5.1 Qué hace COMBINADO
 
@@ -191,12 +190,17 @@ results/final/validacion_y_{true,prob}.npy # probabilidades para el umbral
 results/final/combinado/best_model.keras   # checkpoint de esta etapa
 ```
 
-### 5.4 Por qué no hay comparación de estrategias
+Figuras en `reports/figures/`:
 
-El proyecto tiene una sola estrategia activa: **COMBINADO** (oversampling 50/50 sobre `train` más
-`class_weight` en la pérdida). No existe comando ni código para comparar sin tratamiento, oversampling,
-class weights o la combinación: esa decisión está cerrada y no se vuelve a medir. Reimplementarla
-consumiría horas de CPU sin cambiar el flujo.
+```text
+validation_combinado_confusion_matrix.png
+validation_combinado_roc_curve.png
+```
+
+### 5.4 Alcance de COMBINADO
+
+COMBINADO (oversampling 50/50 sobre `train` más `class_weight` en la pérdida) es la única estrategia
+de desbalance del proyecto: es una premisa metodológica, no el resultado de comparar alternativas.
 
 El tratamiento se aplica **únicamente** a los splits de entrenamiento. `validation` y `test` conservan
 su distribución original y nunca se reponderan.
@@ -315,7 +319,7 @@ O directamente:
 .\.venv\Scripts\python.exe -m pytest -q
 ```
 
-Estado actual: **94 passed, 110 warnings** (en torno a 16 s; el tiempo varía entre ejecuciones).
+Estado actual: **95 passed, 109 warnings** (en torno a 17 s; el tiempo varía entre ejecuciones).
 Las advertencias provienen de dependencias de terceros, no del código del proyecto.
 
 Las pruebas verifican, entre otras cosas:
@@ -323,8 +327,8 @@ Las pruebas verifican, entre otras cosas:
 - el aislamiento estructural del test: que `construir_pipelines_datos()` no construya el pipeline de
   test salvo que se pida, y que la etapa de sensibilidad y la construcción del pipeline de COMBINADO
   rechacen el split `test`;
-- que la estrategia retirada no siga disponible como opción, ni como código vivo ni en la ayuda de
-  la CLI;
+- que la CLI exponga exactamente las etapas del flujo, sin opciones de desbalance adicionales;
+- que cada etapa escriba su checkpoint en un directorio propio;
 - que los checkpoints de etapas distintas no se pisen entre sí;
 - que el entrenamiento definitivo guarde el modelo explícitamente, ya que sin `validation` no hay
   `ModelCheckpoint`;

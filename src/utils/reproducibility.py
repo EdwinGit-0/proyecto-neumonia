@@ -59,13 +59,12 @@ def configurar_reproducibilidad(semilla: int = SEMILLA) -> None:
 
 
 def reiniciar_semilla(semilla: int = SEMILLA) -> None:
-    """Reiniciar el estado aleatorio antes de entrenar una variante.
+    """Reiniciar el estado aleatorio antes de entrenar una corrida.
 
-    Cada variante del flujo de optimizacion la llama justo despues de
+    Cada corrida la llama justo despues de
     ``tf.keras.backend.clear_session()`` y antes de construir su pipeline, de modo
-    que todas las variantes ven exactamente el mismo orden de ejemplos y la misma
-    secuencia de augmentation. Asi la unica diferencia entre variantes es el factor
-    que se quiere medir.
+    que todas ven exactamente el mismo orden de ejemplos y la misma secuencia de
+    augmentation.
     """
     random.seed(semilla)
     np.random.seed(semilla)

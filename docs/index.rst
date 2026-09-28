@@ -1,8 +1,3 @@
-.. Archivo maestro de la documentación de proyecto-neumonia, creado por
-   sphinx-quickstart.
-   Puede adaptar este archivo por completo a su gusto, pero al menos debe
-   contener la directiva raíz `toctree`.
-
 Documentación de proyecto-neumonia
 ==================================
 
@@ -13,8 +8,6 @@ Contenidos:
 
    getting-started
    commands
-
-
 
 Índices y tablas
 ================

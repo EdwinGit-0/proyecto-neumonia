@@ -1,8 +1,9 @@
 """Flujo final del proyecto: estrategia única COMBINADO, umbral congelado y test final.
 
-El flujo no compara estrategias de desbalance. La estrategia activa es ``combinado``
-(oversampling 50/50 + class weights) sobre la arquitectura elegida por la sensibilidad
-de hiperparámetros. Este módulo ejecuta esa estrategia de principio a fin.
+La estrategia de desbalance del proyecto es ``combinado`` (oversampling 50/50 + class weights)
+sobre la arquitectura elegida por la sensibilidad de hiperparámetros. COMBINADO es una premisa
+metodológica, no el resultado de comparar variantes. Este módulo ejecuta el flujo de principio
+a fin.
 
 Etapas:
 
@@ -63,6 +64,10 @@ from src.training.pipeline_entrenamiento import (
     predecir_probabilidades,
 )
 from src.training.sensitivity import cargar_mejor_configuracion_por_arquitectura
+from src.visualization.visualize import (
+    graficar_metricas_test,
+    graficar_seleccion_umbral,
+)
 from src.utils.paths import (
     DIRECTORIO_DATOS,
     DIRECTORIO_RESULTADOS_FINAL,
@@ -91,6 +96,15 @@ RUTA_CHECKPOINT_COMBINADO = DIRECTORIO_RESULTADOS_FINAL / "combinado" / "best_mo
 RUTA_REPORTE_TEST = DIRECTORIO_RESULTADOS_FINAL / "final_test_report.json"
 RUTA_METRICAS_TEST = DIRECTORIO_RESULTADOS_FINAL / "final_test_metrics.csv"
 
+# Figuras del flujo actual, todas en reports/figures con el nombre de la etapa que
+# las produce.
+FIGURA_VALIDACION_CONFUSION = "validation_combinado_confusion_matrix.png"
+FIGURA_VALIDACION_ROC = "validation_combinado_roc_curve.png"
+FIGURA_UMBRAL = "threshold_selection_validation.png"
+FIGURA_TEST_CONFUSION = "test_final_confusion_matrix.png"
+FIGURA_TEST_ROC = "test_final_roc_curve.png"
+FIGURA_TEST_METRICAS = "test_final_metrics.png"
+
 SPLIT_TEST = "test"
 SPLITS_ENTRENAMIENTO = ("train",)
 SPLITS_ENTRENAMIENTO_FINAL = ("train", "val")
@@ -106,8 +120,8 @@ METRICAS_REPORTE = (
     "roc_auc",
 )
 
-# Misma rejilla y mismo desempate que el flujo anterior: máximo balanced accuracy en
-# validation y, ante empate, el umbral más cercano a 0.5.
+# Rejilla de umbrales evaluada sobre validation: 0.05 a 0.95 en pasos de 0.01, más el
+# 0.5 por defecto. El desempate favorece el umbral más cercano a 0.5.
 GRILLA_UMBRALES = tuple(
     sorted({round(0.05 + 0.01 * indice, 2) for indice in range(91)} | {UMBRAL_BASE})
 )
@@ -280,6 +294,20 @@ def ejecutar_combinado(recalcular: bool = False) -> dict[str, Any]:
     np.save(RUTA_PROB_TRUE, y_true)
     np.save(RUTA_PROB_PROB, y_prob)
 
+    figura_validacion_confusion = guardar_matriz_confusion(
+        y_true,
+        y_pred,
+        f"Validation - {MODELO_FINAL} COMBINADO (umbral {UMBRAL_BASE:g})",
+        FIGURA_VALIDACION_CONFUSION,
+    )
+    figura_validacion_roc = guardar_curva_roc(
+        y_true,
+        y_prob,
+        f"Validation - {MODELO_FINAL} COMBINADO",
+        FIGURA_VALIDACION_ROC,
+        etiqueta_adicional="MobileNetV2 COMBINADO",
+    )
+
     payload = {
         "descripcion": (
             "Entrenamiento de MobileNetV2 con la estrategia unica COMBINADO "
@@ -309,6 +337,10 @@ def ejecutar_combinado(recalcular: bool = False) -> dict[str, Any]:
         "epochs_ejecutadas": entrenamiento["epochs_ejecutadas"],
         "early_stopping": entrenamiento["early_stopping"],
         "historial": entrenamiento["historial"],
+        "figuras": {
+            "matriz_confusion": str(figura_validacion_confusion),
+            "curva_roc": str(figura_validacion_roc),
+        },
         "test_utilizado": False,
         "finalizado": datetime.now(timezone.utc).isoformat(),
     }
@@ -318,6 +350,7 @@ def ejecutar_combinado(recalcular: bool = False) -> dict[str, Any]:
         f"validation: balanced accuracy {metricas['balanced_accuracy']:.4f} "
         f"(recall {metricas['recall']:.4f}, specificity {metricas['specificity']:.4f})"
     )
+    _marcar(f"figuras: {figura_validacion_confusion}, {figura_validacion_roc}")
     return payload
 
 
@@ -377,8 +410,8 @@ def buscar_umbral(y_true: np.ndarray, y_prob: np.ndarray) -> dict[str, Any]:
 def ajustar_umbral() -> dict[str, Any]:
     """Elegir y congelar el umbral de COMBINADO usando solo las probabilidades de validation.
 
-    El resultado va a ``results/final/umbral_decision.json``. No reutiliza el umbral del
-    flujo anterior, que pertenecía a otra estrategia y a otro modelo.
+    El resultado va a ``results/final/umbral_decision.json``, y queda congelado antes
+    de que el test se lea por primera vez.
     """
     combinado = cargar_json(RUTA_COMBINADO)
     if not RUTA_PROB_TRUE.exists() or not RUTA_PROB_PROB.exists():
@@ -416,6 +449,9 @@ def ajustar_umbral() -> dict[str, Any]:
         "delta_balanced_accuracy_vs_0.5": busqueda["delta_balanced_accuracy_vs_0.5"],
         "metricas_umbral_elegido": busqueda["mejor"],
         "curva_umbrales": busqueda["curva"],
+        "figura_seleccion_umbral": str(
+            graficar_seleccion_umbral(busqueda["curva"], busqueda["umbral"])
+        ),
         "advertencia_optimismo": (
             "El umbral se eligio maximizando balanced_accuracy sobre validation, y ese mismo "
             "conjunto es el que se reporta. El balanced_accuracy de validation esta por tanto "
@@ -455,6 +491,7 @@ def ajustar_umbral() -> dict[str, Any]:
         f"(balanced accuracy validacion {busqueda['mejor']['balanced_accuracy']:.4f} "
         f"frente a {busqueda['referencia_0.5']['balanced_accuracy']:.4f} en 0.5)"
     )
+    _marcar(f"figura: {umbral['figura_seleccion_umbral']}")
     return decision
 
 
@@ -625,12 +662,24 @@ def evaluar_test() -> dict[str, Any]:
     }
 
     asegurar_directorio(DIRECTORIO_RESULTADOS_FINAL)
+    etiqueta = f"{decision['model_name']} COMBINADO, umbral {umbral:g}"
     figura_confusion = guardar_matriz_confusion(
-        y_true, y_pred, "final", "test", directorio=DIRECTORIO_RESULTADOS_FINAL
+        y_true,
+        y_pred,
+        f"Test final - {etiqueta}",
+        FIGURA_TEST_CONFUSION,
     )
     figura_roc = guardar_curva_roc(
-        y_true, y_prob, "final", "test", directorio=DIRECTORIO_RESULTADOS_FINAL,
-        etiqueta_adicional=f"{decision['model_name']} ({decision['estrategia']}, umbral {umbral})",
+        y_true,
+        y_prob,
+        f"Test final - {decision['model_name']} COMBINADO",
+        FIGURA_TEST_ROC,
+        etiqueta_adicional=etiqueta,
+    )
+    figura_metricas = graficar_metricas_test(
+        {m: float(metricas[m]) for m in METRICAS_REPORTE},
+        {m: float(metricas_referencia[m]) for m in METRICAS_REPORTE},
+        umbral,
     )
 
     reporte = {
@@ -670,6 +719,7 @@ def evaluar_test() -> dict[str, Any]:
         "figuras": {
             "matriz_confusion": str(figura_confusion),
             "curva_roc": str(figura_roc),
+            "metricas": str(figura_metricas),
         },
         "decision_previa": {
             "validation_ganadora": dict(decision.get("validation_ganadora", {})),

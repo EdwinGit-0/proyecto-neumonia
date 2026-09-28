@@ -3,9 +3,9 @@
 Este módulo implementa la **única** estrategia de tratamiento del desbalance que usa
 el proyecto: ``COMBINADO`` = oversampling 50/50 + class weights.
 
-Ya no existe comparación de estrategias. La decisión de tratar el desbalance con ambas
-mecanismos a la vez es una decisión del proyecto, cerrada antes de cualquier evaluación
-de test; este módulo solo la ejecuta y deja constancia de cómo se calculó cada cosa.
+La decisión de tratar el desbalance con ambos mecanismos a la vez es una premisa metodológica
+del proyecto, cerrada antes de cualquier evaluación de test; este módulo solo la ejecuta y deja
+constancia de cómo se calculó cada cosa.
 
 Qué significa exactamente COMBINADO
 -----------------------------------
@@ -67,7 +67,7 @@ from src.utils.reproducibility import SEMILLA
 # queda excluido por construcción: el tratamiento nunca lo alcanza.
 SPLITS_PERMITIDOS = ("train", "val")
 
-# Definición de la estrategia. No hay lista de estrategias porque hay una sola.
+# Definición de la estrategia. No hay lista de variantes porque la decisión está cerrada.
 ESTRATEGIA_COMBINADO: dict[str, Any] = {
     "id": "combinado",
     "descripcion": (

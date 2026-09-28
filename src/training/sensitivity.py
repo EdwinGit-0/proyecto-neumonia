@@ -304,7 +304,7 @@ def construir_comparacion_modelos(seleccion_por_arquitectura: dict[str, Any]) ->
     """Construir la comparación de modelos con la mejor configuración de cada arquitectura.
 
     La forma (``winner`` y ``results``) es la esperada por
-    :func:`src.models.comparison.resumir_comparacion_modelos` y por ``neumonia evaluate``.
+    :func:`src.models.comparison.resumir_comparacion_modelos` y por ``neumonia sensibilidad``.
     """
     resultados: list[dict[str, Any]] = []
     for model_name, info in seleccion_por_arquitectura.items():
@@ -568,10 +568,9 @@ def cargar_mejor_configuracion_por_arquitectura(
 ) -> dict[str, dict[str, Any]]:
     """Devolver la mejor configuración de **cada** arquitectura según la sensibilidad.
 
-    Es el punto de partida del flujo final de estrategias: cada arquitectura conserva
-    la mejor configuración medida solo sobre ``validation``, y no se privilegia
-    ninguna por ser la ganadora global. Así la comparación de estrategias de
-    desbalance se hace sobre las tres arquitecturas por separado.
+    Es el punto de partida del flujo final: cada arquitectura conserva la mejor
+    configuración medida solo sobre ``validation``, y no se privilegia ninguna por
+    ser la ganadora global. El flujo final usa la de MobileNetV2.
     """
     payload = cargar_resultados_sensibilidad(ruta)
     seleccion = payload.get("mejor_por_arquitectura", {})
@@ -609,18 +608,6 @@ def resumir_sensibilidad(payload: dict[str, Any]) -> list[dict[str, Any]]:
             }
         )
     return construir_tabla_resultados(filas)
-
-
-def registrar_auditoria_test(*_args: Any, **_kwargs: Any) -> None:
-    """Retirado: la etapa de sensibilidad ya no evalúa el test original.
-
-    Se conserva el nombre solo para que unimporte antiguo falle de forma explícita
-    en lugar de dejar constancia de un artefacto de test inexistente.
-    """
-    raise RuntimeError(
-        "La auditoría de test fue retirada: el test original solo se evalúa una vez, "
-        "con el modelo definitivo, en src.training.flujo_final."
-    )
 
 
 def refrescar_derivados(payload: dict[str, Any]) -> dict[str, Any]:

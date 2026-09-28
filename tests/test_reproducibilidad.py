@@ -226,12 +226,10 @@ def test_la_construccion_del_pipeline_ocurre_despues_de_fijar_la_semilla() -> No
     assert fuente.index("reiniciar_semilla") < fuente.index("construir_pipeline_combinado")
 
 
-def test_el_flujo_final_tiene_una_sola_estrategia() -> None:
-    """El flujo final usa COMBINADO y no mantiene la comparacion de alternativas."""
+def test_el_flujo_final_entrena_una_sola_configuracion() -> None:
+    """El flujo final usa COMBINADO sobre una sola arquitectura: no hay rejilla que recorrer."""
     import src.training.tratamiento_desbalance as tratamiento_desbalance
 
     assert tratamiento_desbalance.NOMBRE_ESTRATEGIA == "combinado"
-    assert not hasattr(flujo_final, "NOMBRES_ESTRATEGIAS")
-    assert not hasattr(flujo_final, "ESTRATEGIAS")
-    # Una sola estrategia y una sola arquitectura: no hay rejilla que recorrer.
     assert flujo_final.MODELO_FINAL == "MobileNetV2"
+    assert flujo_final.CONFIG_FINAL_ESPERADA == {"learning_rate": 1e-3, "dropout": 0.3, "epochs": 3}
