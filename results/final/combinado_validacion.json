@@ -1,0 +1,128 @@
+{
+  "descripcion": "Entrenamiento de MobileNetV2 con la estrategia unica COMBINADO (oversampling 50/50 + class weights) sobre train, medido exclusivamente sobre validation. Validation no recibe oversampling ni class weights.",
+  "etapa": "combinado",
+  "estrategia": {
+    "id": "combinado",
+    "descripcion": "Oversampling 50/50 de la minoritaria NORMAL en train (muestreo con reemplazo) mas class weights balanceados calculados sobre la distribucion original de train. El tratamiento se aplica solo a los splits de entrenamiento; validation y test conservan su distribucion y nunca se reponderan.",
+    "oversampling": true,
+    "class_weight": true,
+    "class_weights_sobre": "distribucion_original_pre_oversampling",
+    "proporcion_objetivo": "50/50"
+  },
+  "model_name": "MobileNetV2",
+  "config": {
+    "learning_rate": 0.001,
+    "dropout": 0.3,
+    "epochs": 3
+  },
+  "config_origen": "etapa de sensibilidad (sin nueva busqueda de hiperparametros)",
+  "split_manifest": "D:\\CIENCIA_DATOS\\Modulo_6\\Code\\proyecto-neumonia\\data\\interim\\stratified_split_train80_val20_test_original.csv",
+  "seed": 42,
+  "batch_size": 16,
+  "tamano_imagen": [
+    224,
+    224
+  ],
+  "umbral_medicion": 0.5,
+  "splits_entrenamiento": [
+    "train"
+  ],
+  "splits_medicion": [
+    "val"
+  ],
+  "diagnostico_combinado": {
+    "estrategia": "combinado",
+    "splits": [
+      "train"
+    ],
+    "composicion_original": {
+      "NORMAL": 1073,
+      "PNEUMONIA": 3100,
+      "total": 4173
+    },
+    "composicion_tras_oversampling": {
+      "NORMAL": 3100,
+      "PNEUMONIA": 3100,
+      "total": 6200
+    },
+    "filas_duplicadas": 2027,
+    "class_weight": {
+      "0": 1.9445479962721341,
+      "1": 0.6730645161290323
+    },
+    "class_weight_calculado_sobre": "distribucion_original_pre_oversampling",
+    "razon_muestreo_tras_oversampling": 1.0,
+    "razon_pesos_por_clase": 2.8890959925442683,
+    "refuerzo_total_minoritaria": 2.8890959925442683,
+    "advertencia_doble_correccion": "El oversampling iguala la frecuencia (razon 1.00) y los class_weights anaden una razon de 2.89, de modo que NORMAL recibe un refuerzo total de 2.89x frente a PNEUMONIA. COMBINADO no solo corrige el desbalance: lo invierte parcialmente. Los class_weight NO se aplican a validation ni a test.",
+    "filas_efectivas_entrenamiento": 6200,
+    "detalle_oversampling": {
+      "clase_minoritaria": "NORMAL",
+      "NORMAL_original": 1073,
+      "PNEUMONIA_original": 3100,
+      "NORMAL_oversampled": 3100,
+      "PNEUMONIA_oversampled": 3100,
+      "total_original": 4173,
+      "total_oversampled": 6200,
+      "duplicadas": 2027
+    }
+  },
+  "class_weight_aplicado": {
+    "0": 1.9445479962721341,
+    "1": 0.6730645161290323
+  },
+  "class_weight_aplicado_solo_a": "funcion de perdida del entrenamiento",
+  "validation_composicion": {
+    "NORMAL": 268,
+    "PNEUMONIA": 775,
+    "total": 1043
+  },
+  "validation": {
+    "accuracy": 0.9348034515819751,
+    "precision": 0.998589562764457,
+    "recall": 0.9135483870967742,
+    "specificity": 0.996268656716418,
+    "balanced_accuracy": 0.954908521906596,
+    "f1": 0.954177897574124,
+    "roc_auc": 0.9938613384689456
+  },
+  "validation_matriz_confusion": {
+    "tn": 267,
+    "fp": 1,
+    "fn": 67,
+    "tp": 708
+  },
+  "validation_n": 1043,
+  "segundos_entrenamiento": 445.33133244514465,
+  "epochs_ejecutadas": 3,
+  "early_stopping": false,
+  "historial": {
+    "loss": [
+      0.18409733474254608,
+      0.12639907002449036,
+      0.11242299526929855
+    ],
+    "accuracy": [
+      0.921935498714447,
+      0.9495161175727844,
+      0.9559677243232727
+    ],
+    "val_loss": [
+      0.19199348986148834,
+      0.19466868042945862,
+      0.1662408709526062
+    ],
+    "val_accuracy": [
+      0.923298180103302,
+      0.9309683442115784,
+      0.9348034262657166
+    ],
+    "lr": [
+      0.0010000000474974513,
+      0.0010000000474974513,
+      0.0010000000474974513
+    ]
+  },
+  "test_utilizado": false,
+  "finalizado": "2026-09-28T11:18:51.682016+00:00"
+}

@@ -304,7 +304,7 @@ def test_criterio_exito_requiere_superar_baseline_y_equilibrio(tmp_path: Path) -
 def test_capas_augmentation_no_incluyen_flip_horizontal() -> None:
     import tensorflow as tf
 
-    from src.training.run_real_training import crear_capas_augmentation
+    from src.training.pipeline_entrenamiento import crear_capas_augmentation
 
     layers = crear_capas_augmentation()
     assert not any(isinstance(layer, tf.keras.layers.RandomFlip) for layer in layers)
@@ -313,7 +313,7 @@ def test_capas_augmentation_no_incluyen_flip_horizontal() -> None:
 def test_capas_augmentation_incluyen_rotacion_y_zoom() -> None:
     import tensorflow as tf
 
-    from src.training.run_real_training import crear_capas_augmentation
+    from src.training.pipeline_entrenamiento import crear_capas_augmentation
 
     layers = crear_capas_augmentation()
     assert any(isinstance(layer, tf.keras.layers.RandomRotation) for layer in layers)
@@ -321,12 +321,12 @@ def test_capas_augmentation_incluyen_rotacion_y_zoom() -> None:
 
 
 def test_capas_augmentation_rotacion_y_zoom_usados_en_entrenamiento_solo(tmp_path: Path) -> None:
-    """La pipeline de datos no incorpora augmentación; esta se aplica solo al train."""
+    """La pipeline de datos no incorpora augmentaciÃ³n; esta se aplica solo al train."""
     import tensorflow as tf
 
     from src.data.datasets import construir_pipelines_datos
     from src.data.splitting import cargar_manifiesto_division
-    from src.training.run_real_training import construir_pipeline_augmentation
+    from src.training.pipeline_entrenamiento import construir_pipeline_augmentation
 
     data_dir = tmp_path / "chest_xray"
     _crear_estructura_prueba(data_dir)
@@ -341,6 +341,7 @@ def test_capas_augmentation_rotacion_y_zoom_usados_en_entrenamiento_solo(tmp_pat
         image_size=(16, 16),
         batch_size=4,
         manifiesto_division=manifest_path,
+        incluir_test=True,
     )
     assert isinstance(datasets["train"], tf.data.Dataset)
     assert isinstance(datasets["val"], tf.data.Dataset)
@@ -349,3 +350,66 @@ def test_capas_augmentation_rotacion_y_zoom_usados_en_entrenamiento_solo(tmp_pat
     augmented = construir_pipeline_augmentation(datasets["train"])
     assert isinstance(augmented, tf.data.Dataset)
     assert augmented.element_spec == datasets["train"].element_spec
+
+
+def test_el_pipeline_de_test_no_se_construye_sin_pedirlo_explicitamente(tmp_path: Path) -> None:
+    """El aislamiento del test es estructural: sin incluir_test no existe el pipeline de test."""
+    import tensorflow as tf
+
+    from src.data.datasets import construir_pipelines_datos
+
+    data_dir = tmp_path / "chest_xray"
+    _crear_estructura_prueba(data_dir)
+    manifest_path = tmp_path / "split.csv"
+    crear_manifiesto_division_estratificada(data_dir, manifest_path, random_state=42)
+
+    datasets = construir_pipelines_datos(
+        data_dir,
+        image_size=(16, 16),
+        batch_size=4,
+        manifiesto_division=manifest_path,
+    )
+
+    assert set(datasets) == {"train", "val"}
+    assert "test" not in datasets
+    assert all(isinstance(pipeline, tf.data.Dataset) for pipeline in datasets.values())
+
+
+def test_construir_el_pipeline_de_test_no_ninguna_imagen(tmp_path: Path, monkeypatch) -> None:
+    """Pedir incluir_test construye el pipeline, pero la evaluacion final es la unica que lo lee.
+
+    Es lo que permite que ``neumonia prepare`` verifique que el split original sea
+    construible sin abrir una sola radiografia de test: el dataset es perezoso.
+    """
+    from src.data import datasets as modulo_datasets
+    from src.data.datasets import construir_pipelines_datos
+
+    data_dir = tmp_path / "chest_xray"
+    _crear_estructura_prueba(data_dir)
+    manifest_path = tmp_path / "split.csv"
+    crear_manifiesto_division_estratificada(data_dir, manifest_path, random_state=42)
+
+    leidas: list[str] = []
+    original = modulo_datasets.cargar_imagen
+
+    def espia(ruta, *args, **kwargs):
+        leidas.append(str(ruta))
+        return original(ruta, *args, **kwargs)
+
+    monkeypatch.setattr(modulo_datasets, "cargar_imagen", espia)
+
+    construidos = construir_pipelines_datos(
+        data_dir,
+        image_size=(16, 16),
+        batch_size=4,
+        manifiesto_division=manifest_path,
+        incluir_test=True,
+    )
+
+    assert "test" in construidos
+    assert leidas == []
+
+    for _ in construidos["test"].take(1):
+        pass
+
+    assert leidas, "iterar el pipeline de test debe cargar imagenes"

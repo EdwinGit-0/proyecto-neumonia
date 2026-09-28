@@ -1,0 +1,97 @@
+{
+  "descripcion": "Evaluacion del test original con el modelo definitivo COMBINADO, usando el umbral congelado a partir de validation.",
+  "model_name": "MobileNetV2",
+  "estrategia": "combinado",
+  "config": {
+    "learning_rate": 0.001,
+    "dropout": 0.3,
+    "epochs": 3
+  },
+  "umbral": 0.38,
+  "umbral_referencia": 0.5,
+  "modelo": "D:\\CIENCIA_DATOS\\Modulo_6\\Code\\proyecto-neumonia\\results\\final\\final_model\\best_model.keras",
+  "split_manifest": "D:\\CIENCIA_DATOS\\Modulo_6\\Code\\proyecto-neumonia\\data\\interim\\stratified_split_train80_val20_test_original.csv",
+  "test": {
+    "total": 624,
+    "NORMAL": 234,
+    "PNEUMONIA": 390,
+    "evaluadas": 624
+  },
+  "metricas_umbral_congelado": {
+    "accuracy": 0.9118589743589743,
+    "precision": 0.9328165374677002,
+    "recall": 0.9256410256410257,
+    "specificity": 0.8888888888888888,
+    "balanced_accuracy": 0.9072649572649573,
+    "f1": 0.9292149292149292,
+    "roc_auc": 0.9727591496822265
+  },
+  "metricas_referencia_0.5": {
+    "accuracy": 0.9006410256410257,
+    "precision": 0.9432432432432433,
+    "recall": 0.8948717948717949,
+    "specificity": 0.9102564102564102,
+    "balanced_accuracy": 0.9025641025641026,
+    "f1": 0.9184210526315789,
+    "roc_auc": 0.9727591496822265
+  },
+  "matriz_confusion": {
+    "tn": 208,
+    "fp": 26,
+    "fn": 29,
+    "tp": 361,
+    "matriz_referencia_0.5": {
+      "tn": 213,
+      "fp": 21,
+      "fn": 41,
+      "tp": 349
+    }
+  },
+  "baseline_clase_mayoritaria": {
+    "baseline": "clase mayoritaria",
+    "majority_class": "PNEUMONIA",
+    "accuracy": 0.625,
+    "balanced_accuracy": 0.5,
+    "recall": 1.0,
+    "specificity": 0.0,
+    "f1": 0.7692307692307693,
+    "roc_auc": 0.5
+  },
+  "criterio_exito": {
+    "umbral_congelado": {
+      "cumple": true,
+      "supera_baseline": true,
+      "sensibilidad_sobre_azar": true,
+      "especificidad_sobre_azar": true,
+      "equilibrio_adecuado": true,
+      "balanced_accuracy_modelo": 0.9072649572649573,
+      "balanced_accuracy_baseline": 0.5
+    },
+    "referencia_0.5": {
+      "cumple": true,
+      "supera_baseline": true,
+      "sensibilidad_sobre_azar": true,
+      "especificidad_sobre_azar": true,
+      "equilibrio_adecuado": true,
+      "balanced_accuracy_modelo": 0.9025641025641026,
+      "balanced_accuracy_baseline": 0.5
+    }
+  },
+  "figuras": {
+    "matriz_confusion": "D:\\CIENCIA_DATOS\\Modulo_6\\Code\\proyecto-neumonia\\results\\final\\confusion_matrix_test_final.png",
+    "curva_roc": "D:\\CIENCIA_DATOS\\Modulo_6\\Code\\proyecto-neumonia\\results\\final\\roc_curve_test_final.png"
+  },
+  "decision_previa": {
+    "validation_ganadora": {
+      "accuracy": 0.9348034515819751,
+      "precision": 0.998589562764457,
+      "recall": 0.9135483870967742,
+      "specificity": 0.996268656716418,
+      "balanced_accuracy": 0.954908521906596,
+      "f1": 0.954177897574124,
+      "roc_auc": 0.9938613384689456
+    },
+    "criterio_umbral": "maximo balanced_accuracy en validation; empate -> mas cercano a 0.5"
+  },
+  "finalizado": "2026-09-28T11:27:58.324876+00:00"
+}

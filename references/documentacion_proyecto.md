@@ -6,9 +6,9 @@
 
 **Problema:** clasificar radiografías de tórax en las clases `NORMAL` y `PNEUMONIA` mediante modelos convolucionales con transferencia de aprendizaje.
 
-**Objetivo:** entrenar, evaluar y comparar VGG16, ResNet50 y MobileNetV2 con una configuración comparable, seleccionar la mejor arquitectura sobre el conjunto de validación con una regla reproducible, analizar la sensibilidad de hiperparámetros de MobileNetV2 y, sobre ese ganador fijo, comparar cinco variantes que atacan el desbalance de clases y el alcance del fine-tuning. El modelo final se elige únicamente con `validation` y se evalúa una última vez sobre el `test` original.
+**Objetivo:** entrenar MobileNetV2 con una estrategia única de tratamiento del desbalance (COMBINADO: oversampling 50/50 sobre `train` más `class_weight` en la función de pérdida), congelar su umbral de decisión sobre validación y reentrenarlo sobre `train + val`. Previamente se analiza la sensibilidad de learning rate, dropout y número de épocas. La arquitectura y el tratamiento del desbalance son **premisas fijadas**, no variables a comparar.
 
-**Alcance:** análisis exploratorio, preparación de imágenes, entrenamiento experimental, evaluación y comparación de tres arquitecturas, análisis de sensibilidad de hiperparámetros de MobileNetV2 (learning rate, dropout y épocas) y optimización de cinco variantes (oversampling, class weights y tres profundidades de fine-tuning) para obtener el modelo final. El resultado es académico y experimental.
+**Alcance:** análisis exploratorio, preparación de imágenes, sensibilidad de hiperparámetros (21 entrenamientos), entrenamiento con COMBINADO medido en validación, ajuste de umbral sobre validación y entrenamiento del modelo definitivo. **Ninguna decisión se toma con el test, y el test ya consultado no se vuelve a tocar** (sección 9). El resultado es académico y experimental.
 
 **Limitaciones:** no es un sistema clínico ni una herramienta de diagnóstico; no existe validación clínica externa; el dataset está desbalanceado; no se realiza calibración ni despliegue productivo.
 
@@ -27,7 +27,7 @@ Estructura cruda del dataset (5.856 imágenes `.jpeg`):
 
 El `val` original de 16 imágenes pertenece a la estructura cruda del dataset y **no se utiliza en ningún experimento** (ni entrenamiento, ni validación, ni selección de modelos).
 
-El `test` original de **624 imágenes permanece completamente intacto**: no participa en entrenamiento, no participa en selección de modelos ni en ajuste de hiperparámetros, y no se mezcla con `train` ni `validation`. Se consulta **dos veces y solo para medir, nunca para decidir**: la evaluación inicial del checkpoint ganador de la sensibilidad, antes de optimizar, y la evaluación final del modelo ya elegido. Ninguna de las dos entradas interviene en la decisión, que se toma solo con `validation`.
+El `test` original de **624 imágenes permanece completamente intacto**: no participa en entrenamiento, no participa en selección de modelos, de estrategia ni de umbral, y no se mezcla con `train` ni `validation`. Se consulta **una sola vez**, al final, sobre el modelo definitivo ya congelado.
 
 ### División experimental
 
@@ -38,7 +38,7 @@ Para el modelado, únicamente las **5.216 imágenes del train original** se divi
 | train | 1.073 | 3.100 | 4.173 | 80% aprox. del train original |
 | validation | 268 | 775 | 1.043 | 20% aprox. del train original |
 | test | 234 | 390 | 624 | test original íntegro |
-| **Total** | **1.575** | **4.265** | **5.840** | luego excluye el val original de 16 |
+| **Total** | **1.575** | **4.265** | **5.840** | excluye el val original de 16 |
 
 Los totales (1.575 NORMAL + 4.265 PNEUMONIA = 5.840) corresponden a 5.856 imágenes del crudo menos las 16 del `val` original que no se usan.
 
@@ -65,60 +65,54 @@ proyecto-neumonia/
 │       ├── chest_xray.dvc
 │       └── chest_xray/
 ├── models/
-│   ├── vgg16/best_model.keras
-│   ├── resnet50/best_model.keras
-│   ├── mobilenetv2/best_model.keras              # arquitectura base, 1e-4
-│   ├── mobilenetv2_ajustado/best_model.keras      # histórico, tuning lr=3e-4
-│   ├── mobilenetv2_tuning/<experimento>/best_model.keras   # histórico, tuning + desbalance
-│   ├── mobilenetv2_optimizacion/<variante>/best_model.keras # vigente, 5 variantes
-│   ├── historico/                                 # ejecuciones no reproducibles
-│   │   ├── optimization_results_ALEATORIO_NO_CONTROLADO.json
-│   │   └── mobilenetv2_optimizacion_ALEATORIO_NO_CONTROLADO/
-│   ├── model_results.json                         # etapa 1: selección de arquitectura
-│   ├── sensitivity_results.json                   # etapa 2: 7 configs x 3 arquitecturas = 21 pruebas
-│   ├── sensitivity_test_audit.json                # auditoría del test del ganador de la etapa 2
-│   ├── optimization_results.json                  # vigente: test inicial, validación, selección y test final
-│   ├── mobilenetv2_tuning_results.json            # histórico
-│   └── mobilenetv2_desbalance_results.json        # histórico
+│   └── sensitivity_results.json          # 21 corridas de sensibilidad
+├── results/
+│   └── final/                              # COMBINADO, umbral, modelo definitivo y test
+│       ├── combinado_validacion.json
+│       ├── combinado_validacion.csv
+│       ├── validacion_y_{true,prob}.npy
+│       ├── combinado/best_model.keras      # checkpoint de la etapa COMBINADO
+│       ├── umbral_decision.json
+│       ├── decision_modelo.json
+│       ├── final_model/best_model.keras
+│       ├── final_model_training.json
+│       ├── final_test_report.json
+│       ├── final_test_metrics.csv
+│       ├── confusion_matrix_test_final.png
+│       ├── roc_curve_test_final.png
+│       └── test_y_{true,prob}.npy
 ├── experiments/
-│   ├── sensibilidad_hiperparametros/              # 21 checkpoints, resultados, log e informe
-│   └── optimizacion_pendiente_mobilenetv2/        # respaldo histórico (fuera del flujo vigente)
+│   └── sensibilidad_hiperparametros/      # barrido de 21 corridas + informe
 ├── notebooks/
 │   └── 01_comprension_datos_eda.ipynb
 ├── references/
 │   ├── documentacion_proyecto.md
 │   └── guia_ejecucion.md
-├── reports/figures/
+├── reports/
+│   └── figures/
 ├── src/
 │   ├── cli.py
 │   ├── data/
-│   │   ├── make_dataset.py
-│   │   ├── preprocessing.py
-│   │   ├── splitting.py
-│   │   └── datasets.py
-│   ├── features/build_features.py
+│   ├── features/
 │   ├── models/
-│   │   ├── architectures.py
-│   │   ├── evaluation.py
+│   │   ├── architectures.py               # construir_modelo_proyecto
 │   │   ├── comparison.py
-│   │   ├── train_model.py
-│   │   └── predict_model.py
+│   │   └── evaluation.py                  # métricas, baseline, criterio
 │   ├── training/
-│   │   ├── run_real_training.py            # etapa 1
-│   │   ├── sensitivity.py                  # etapa 2
-│   │   ├── optimizacion_mobilenetv2.py     # etapas 3, 4 y 5
-│   │   ├── tuning_mobilenetv2.py           # histórico: constructor de modelo y criterio
-│   │   └── tuning_desbalance_clases.py     # histórico: class weights y oversampling
+│   │   ├── pipeline_entrenamiento.py      # augmentation, callbacks, figuras
+│   │   ├── tratamiento_desbalance.py      # COMBINADO: oversampling + class weights
+│   │   ├── sensitivity.py                 # 21 corridas, sin acceso a test
+│   │   └── flujo_final.py                 # combinado → umbral → final → test
 │   ├── utils/
 │   │   ├── paths.py
-│   │   └── reproducibility.py              # única fuente de semilla
-│   └── visualization/visualize.py
+│   │   └── reproducibility.py            # única fuente de semilla
+│   └── visualization/
 ├── tests/
 │   ├── test_make_dataset.py
 │   ├── test_pipeline_components.py
+│   ├── test_reproducibilidad.py
 │   ├── test_sensitivity.py
-│   ├── test_optimizacion_mobilenetv2.py
-│   └── test_reproducibilidad.py
+│   └── test_flujo_final.py
 ├── Makefile
 ├── README.md
 ├── requirements.txt
@@ -127,31 +121,28 @@ proyecto-neumonia/
 └── tox.ini
 ```
 
-`build_features.py`, `train_model.py` y `predict_model.py` existen pero están vacíos y no son entry points del flujo ejecutado. El entrenamiento de la etapa 1 se invoca a través de la CLI (`neumonia train`), que llama a `entrenar_y_evaluar_modelos` en `src/training/run_real_training.py`. Las etapas 2 a 5 se ejecutan con `neumonia sensibilidad` (`sensitivity.py`) y `neumonia test-inicial` / `neumonia optimizar` (`optimizacion_mobilenetv2.py`).
+Los checkpoints (`.keras`) y las probabilidades (`.npy`) se excluyen de git por tamaño; los resultados en JSON y CSV sí se versionan.
 
 ## 5. CLI
 
-La forma recomendada de ejecutar el flujo es la interfaz de línea de comandos `neumonia`, que invoca las funciones existentes sin duplicar lógica. Se registra con la instalación del proyecto (`pip install -r requirements.txt`, que incluye `-e .`; si falta, `pip install -e .`).
-
 | Comando | Función |
 |---|---|
-| `neumonia eda` | Análisis exploratorio de datos existente. |
-| `neumonia prepare` | Genera el manifiesto estratificado (80% train / 20% validation del train original, test original intacto) y verifica los pipelines. |
-| `neumonia augment` | Genera la figura de ejemplos de augmentación. |
-| `neumonia train` | Entrena VGG16, ResNet50 y MobileNetV2; evalúa, compara y selecciona. |
-| `neumonia sensibilidad` | Registra los resultados de los 21 entrenamientos (7 configuraciones × 3 arquitecturas). Si `models/sensitivity_results.json` existe, no la repite. Acepta `--recalcular` para reentrenar las 21 pruebas. |
-| `neumonia test-inicial` | Evalúa sobre el test original el checkpoint del ganador de sensibilidad, sin reentrenar. |
-| `neumonia optimizar` | Entrena las 5 variantes sobre el ganador fijo de sensibilidad, selecciona sobre validation y ejecuta el test final una sola vez. Acepta `--reusar`. |
-| `neumonia evaluate` | Muestra los resultados guardados sin volver a entrenar. |
-| `neumonia test` | Ejecuta la suite de pruebas con pytest. Acepta `--verbose` / `-v`. |
-| `neumonia run` | Encadena EDA, preparación, augmentación, sensibilidad, optimización (con test inicial y test final) y, al terminar, la suite de pruebas. No invoca `neumonia train`: la etapa 1 queda fuera porque la sensibilidad ya evalúa las tres arquitecturas. |
+| `neumonia eda` | Análisis exploratorio del dataset. |
+| `neumonia prepare` | Manifiesto estratificado 80/20 y verificación de pipelines. |
+| `neumonia augment` | Figura de ejemplos de augmentación. |
+| `neumonia sensibilidad` | 21 corridas de sensibilidad; no repite si el artefacto existe. |
+| `neumonia combinado` | MobileNetV2 con COMBINADO sobre `train`, medido en `validation`. |
+| `neumonia umbral` | Congela el umbral de decisión usando solo `validation`. |
+| `neumonia final` | Reentrena el definitivo sobre `train + val`. |
+| `neumonia test` | Evalúa el test original con el modelo definitivo y el umbral congelado. |
+| `neumonia evaluar` | Muestra los resultados guardados sin entrenar. |
+| `neumonia test-suite` | Ejecuta `pytest`. |
+| `neumonia run` | Flujo completo, incluida la evaluación del test. |
 
-Los comandos `tune` y `desbalance` se han **eliminado de la CLI**. Correspondían a una
-experimentación previa sobre `lr=3e-4` y quedaron superados por la etapa de sensibilidad. Sus
-artefactos se conservan en `models/mobilenetv2_tuning_results.json` y
-`models/mobilenetv2_desbalance_results.json`, y el código que los generaba se conserva únicamente
-en `experiments/`. El flujo vigente no vuelve a explorar learning rate, dropout ni epochs: esa
-búsqueda quedó cerrada en la etapa de sensibilidad.
+`neumonia run` encadena las ocho etapas y termina con la suite de pruebas.
+
+Los comandos `train`, `tune`, `desbalance`, `optimizar`, `estrategias`, `test-inicial` y
+`test-una-vez` se eliminaron: pertenecían a flujos que comparaban estrategias o usaban el test para decidir.
 
 ## 6. Preparación de datos y augmentación
 
@@ -159,13 +150,15 @@ El reparto experimental lo genera `crear_manifiesto_division_estratificada` (`sr
 
 El preprocesamiento (`src/data/preprocessing.py`) carga cada imagen con Pillow y la convierte a RGB, la redimensiona a `224 x 224` con interpolación bilinear y la normaliza a `[0, 1]` (división por 255). El código no utiliza el `preprocess_input` específico de cada backbone.
 
-`src/data/datasets.py` construye los `tf.data.Dataset` con tensores `224 x 224 x 3`, mezcla los ejemplos, agrupa en batches y usa `prefetch` automático. La data augmentation se aplica únicamente sobre `train` con `RandomRotation(0.05)` y `RandomZoom(0.05)`; `validation` y `test` no reciben augmentation.
+`src/data/datasets.py` construye los `tf.data.Dataset` con tensores `224 x 224 x 3`, mezcla los ejemplos, agrupa en batches y usa `prefetch` automático. La augmentación se aplica únicamente sobre `train` con `RandomRotation(0.05)` y `RandomZoom(0.05)`; `validation` y `test` no reciben augmentation.
 
-El volteo horizontal (`RandomFlip("horizontal")`) fue eliminado: en radiografías de tórax puede existir información de lateralidad anatómica y marcadores L/R, y un volteo horizontal podría invertir artificialmente esa información. El flujo base no aplica oversampling, undersampling ni class weights; el desbalance se reporta mediante métricas balanceadas. En la fase de mejora (sección 8.2) sí se probaron **class weights** y **oversampling** sobre `train` para el modelo final, siempre sin tocar `validation` ni `test`. La figura de ejemplos se genera con `graficar_ejemplos_augmentation` (`src/visualization/visualize.py`) en `reports/figures/data_augmentation_examples.png`.
+**Aislamiento estructural del test.** `construir_pipelines_datos()` recibe `incluir_test=False` por defecto, de modo que el pipeline de test no se construye en ninguna etapa salvo donde se pide explícitamente con `incluir_test=True`: la evaluación final (`evaluar_test()`), que lo itera para predecir, y la etapa `neumonia prepare`, que solo verifica que el split sea construible. El dataset se crea con `tf.data.Dataset.from_generator`, por lo que es perezoso: construir el objeto no lee ninguna imagen, y `prepare` no abre ni una sola del test.
+
+El volteo horizontal (`RandomFlip("horizontal")`) fue eliminado: en radiografías de tórax puede existir información de lateralidad anatómica y marcadores L/R, y un volteo horizontal podría invertir artificialmente esa información. El tratamiento de desbalance COMBINADO se aplica **solo sobre `train`**, nunca sobre `validation` ni `test`. La figura de ejemplos se genera con `graficar_ejemplos_augmentation` (`src/visualization/visualize.py`) en `reports/figures/data_augmentation_examples.png`.
 
 ## 7. Configuración experimental de los modelos
 
-Los tres modelos usan Keras Applications con pesos ImageNet, `include_top=False` y base convolucional congelada. Sobre la base se añade:
+Los tres modelos usan Keras Applications con pesos ImageNet, `include_top=False` y base convolucional **congelada**. Sobre la base se añade:
 
 ```text
 GlobalAveragePooling2D
@@ -174,391 +167,245 @@ Dropout(0.3)
 Dense(1, activation="sigmoid")
 ```
 
-- Entrada: `224 x 224 x 3`.
-- Función de pérdida: `binary_crossentropy`.
-- Optimizador: Adam con learning rate `1e-4`.
-- Batch size: 16.
-- Máximo de epochs: 3 (semilla 42).
-- `ModelCheckpoint` monitorizando `val_loss` (guarda solo el mejor modelo).
-- `EarlyStopping` con paciencia 3 y restauración de mejores pesos.
-- `ReduceLROnPlateau` con factor 0.5, paciencia 2 y learning rate mínimo `1e-6`.
+El constructor único es `construir_modelo_proyecto()` (`src/models/architectures.py`), usado tanto por la sensibilidad como por el flujo final, de modo que la única diferencia entre corridas sea el hiperparámetro o la estrategia que se varíe.
 
-Esta sección describe la configuración base compartida por los tres modelos. La búsqueda de
-hiperparámetros de MobileNetV2 (sección 8.1) y la optimización del desbalance (sección 8.2)
-conservan el mismo esquema de capas y callbacks.
+| Parámetro | Valor vigente |
+|---|---|
+| Entrada | `224 x 224 x 3` |
+| Pérdida | `binary_crossentropy` |
+| Optimizador | Adam, `learning_rate=1e-3` |
+| Dropout | `0.3` |
+| Batch size | `16` |
+| Épocas | `3` |
+| Semilla | `42` |
+| `ModelCheckpoint` | monitoriza `val_loss`, guarda solo el mejor |
+| `EarlyStopping` | paciencia 3, restaura mejores pesos |
+| `ReduceLROnPlateau` | factor 0.5, paciencia 2, mínimo `1e-6` |
+
+Los valores `learning_rate=1e-3`, `dropout=0.3` y 3 épocas no son arbitrarios: los cerró la sensibilidad (sección 8.1). El modelo definitivo se entrena los mismos 3 épocas exactos, sin early stopping, porque ya no existe un conjunto de validación que monitorear.
 
 ## 8. Entrenamiento, evaluación y selección
 
-El flujo real está implementado en `src/training/run_real_training.py` y se ejecuta con `neumonia train` (o `neumonia run`). Establece la semilla 42, regenera el manifiesto (train original → 80% train / 20% validation; test original intacto de 624), construye los datasets, aplica augmentation a `train`, entrena cada modelo y evalúa su checkpoint seleccionado por `val_loss`.
+Todo el flujo real está implementado en `src/training/`: `pipeline_entrenamiento.py` (entrenamiento compartido), `tratamiento_desbalance.py` (COMBINADO), `sensitivity.py` (21 corridas) y `flujo_final.py` (etapas 2 a 5).
 
-La comparación y la selección se realizan **exclusivamente** con las métricas sobre `validation` (1.043 imágenes). El `test` original (624 imágenes) queda reservado: se mide dos veces y **nunca decide** — antes de optimizar, sobre el ganador de la sensibilidad, y al final, sobre el modelo ya elegido. El `test` no participa en entrenamiento, selección ni ajuste. Las predicciones binarias usan umbral 0.5 y las curvas ROC se generan con probabilidades. La regla de selección es, en orden:
+El `test` original (624 imágenes) queda reservado y **nunca decide**: se lee una sola vez, al final del flujo, cuando la arquitectura, la estrategia y el umbral ya están congelados. Las predicciones binarias de las etapas de decisión usan umbral 0.5; el umbral final se ajusta en la etapa 3. La regla de selección es jerárquica y, en orden:
 
 1. Balanced Accuracy;
 2. ROC-AUC;
 3. F1;
 4. Accuracy.
 
-Esta regla reemplazó a la anterior `Recall -> Accuracy -> F1`, que podía seleccionar un modelo que detectara todos los positivos mientras clasificaba mal todos los normales.
+Esta regla reemplazó a la anterior `Recall -> Accuracy -> F1`, que podía seleccionar un modelo que detectara todos los positivos mientras clasificaba mal todos los normales. Al ser jerárquica, basta con ganar la primera métrica: no se exige ganar en las cuatro, y el recall se reporta pero no filtra candidatos.
 
 ### Criterio de éxito
 
-El criterio de éxito es independiente del criterio de selección. El modelo seleccionado, evaluado sobre el **test original independiente**, debe:
+El criterio de éxito es independiente del criterio de selección y se evalúa únicamente sobre el test original. El modelo definitivo debe:
 
-1. **Superar un baseline sencillo**: el baseline es la *clase mayoritaria* (predecir siempre `PNEUMONIA`). El modelo debe superar su Balanced Accuracy (0.5) sobre el test.
-2. **Demostrar un equilibrio adecuado entre sensibilidad y especificidad**: ambas deben superar el nivel de azar (0.5).
+1. **Superar un baseline sencillo**: la *clase mayoritaria* (predecir siempre `PNEUMONIA`), con Balanced Accuracy 0.5.
+2. **Demostrar equilibrio**: sensibilidad y especificidad ambas por encima de 0.5.
 
-El baseline se calcula en `evaluar_baseline_mayoritaria` y el criterio en `evaluar_criterio_exito` (`src/models/evaluation.py`); ambos se persisten en `models/model_results.json` (`baseline_test` y `criterio_exito`).
+El baseline se calcula en `evaluar_baseline_mayoritaria` y el criterio en `evaluar_criterio_exito` (`src/models/evaluation.py`); ambos se persisten en `results/final/final_test_report.json` (`baseline_clase_mayoritaria` y `criterio_exito`).
 
-### 8.1 Sensibilidad de hiperparámetros de MobileNetV2
+### 8.1 Sensibilidad de hiperparámetros (21 corridas, cerrada)
 
-Ejecutable en `src/training/sensitivity.py` (CLI: `neumonia sensibilidad`). Explora **7
-configuraciones** de hiperparámetros, cada una repetida en las **3 arquitecturas**, es decir
-**21 entrenamientos** (3 × 7), siempre sobre el mismo reparto experimental, con el mismo criterio
-de selección y los mismos callbacks que el flujo base. Se evalúan **solo** sobre `validation`.
+Ejecutable en `src/training/sensitivity.py` (CLI: `neumonia sensibilidad`) y en
+`experiments/sensibilidad_hiperparametros/run_sensibilidad.py`. Explora **7 configuraciones** de
+hiperparámetros, cada una repetida en las **3 arquitecturas**, es decir **21 entrenamientos**
+completos con fine-tuning congelado. La etapa **rechaza** cualquier split distinto de `train` y
+`validation`.
 
-| Eje | Valores explorados |
+| `id` | Grupo | Learning rate | Dropout | Épocas | Varía |
+|---|---|---:|---:|---:|---|
+| `ref_lr1e-4_do0.3_ep3` | referencia | 1e-4 | 0.3 | 3 | los tres |
+| `lr_3e-4` | learning_rate | 3e-4 | 0.3 | 3 | learning rate |
+| `lr_1e-3` | learning_rate | 1e-3 | 0.3 | 3 | learning rate |
+| `do_0.2` | dropout | 1e-4 | 0.2 | 3 | dropout |
+| `do_0.5` | dropout | 1e-4 | 0.5 | 3 | dropout |
+| `ep_5` | epochs | 1e-4 | 0.3 | 5 | épocas |
+| `ep_10` | epochs | 1e-4 | 0.3 | 10 | épocas |
+
+Cada configuración varía **un solo factor** respecto de la referencia, lo que permite atribuir el
+efecto a ese factor.
+
+La mejor configuración por arquitectura (Balanced Accuracy en `validation`):
+
+| Arquitectura | `id` ganadora | Balanced Accuracy | ROC-AUC | F1 | Accuracy | Δ vs referencia |
+|---|---|---:|---:|---:|---:|---:|
+| MobileNetV2 | `lr_1e-3` | 0.959042 | 0.993645 | 0.975990 | 0.964525 | +0.018796 |
+| VGG16 | `lr_1e-3` | 0.939913 | 0.985031 | 0.947581 | 0.925216 | +0.064025 |
+| ResNet50 | `lr_1e-3` | 0.736625 | 0.893067 | 0.884447 | 0.822627 | +0.236625 |
+
+Las tres arquitecturas comparten `lr=1e-3`, `dropout=0.3` y 3 épocas, de modo que el learning rate es
+el factor dominante y el resto de la búsqueda no aporta nada. En la configuración de referencia
+(`1e-4`), ResNet50 colapsaba a Balanced Accuracy 0.5 (especificidad 0.0): clasificaba todo como
+`PNEUMONIA`. Con `1e-3` su especificidad sube a 0.5597.
+
+Artefactos: `models/sensitivity_results.json` (oficial, con `test_utilizado: false` y
+`splits_utilizados: ["train", "val"]`) y
+`experiments/sensibilidad_hiperparametros/INFORME_SENSIBILIDAD.md`. Las 21 corridas están
+completadas y **no deben repetirse**: la etapa 2 parte de este JSON.
+
+### 8.2 Estrategia única COMBINADO
+
+Implementado en `tratamiento_desbalance.construir_train_combinado` y
+`flujo_final.ejecutar_combinado` (CLI: `neumonia combinado`). Se toma la mejor configuración de
+MobileNetV2 de la sección 8.1 y se entrena **una sola** corrida:
+
+| Paso | Detalle |
 |---|---|
-| Learning rate | `1e-4` (referencia), `3e-4`, `1e-3` |
-| Dropout | `0.3` (referencia), `0.2`, `0.5` |
-| Épocas | `3` (referencia), `5`, `10` |
+| Oversampling | `NORMAL` se equipara con `PNEUMONIA` en `train` (1.073 → 3.100), hasta 6.200 filas efectivas |
+| Class weights | `{0: 1.9445, 1: 0.6731}`, sobre la distribución **original** de `train` |
+| Ámbito | Solo `train`: oversampling al pipeline, pesos a la función de pérdida de `fit` |
+| `validation` | Intacta: 268 NORMAL / 775 PNEUMONIA, sin oversampling ni pesos |
 
-La configuración de referencia es `lr=1e-4`, `dropout=0.3` y 3 épocas (`ref_lr1e-4_do0.3_ep3`); las
-seis derivadas son `lr_3e-4`, `lr_1e-3`, `do_0.2`, `do_0.5`, `ep_5` y `ep_10`. Esta etapa **no**
-incluye fine-tuning: las tres arquitecturas se entrenan desde cero en cada configuración. El
-fine-tuning se evalúa exclusivamente en la etapa 8.2.
+La función rechaza explícitamente cualquier solicitud que incluya el split `test`.
 
-Resultados en `models/sensitivity_results.json`; artefactos completos (checkpoints, resultados
-parciales y log) en `experiments/sensibilidad_hiperparametros/`. La ejecución es **idempotente**:
-si el artefacto existe, el comando lo registra sin reentrenar los 21 experimentos; `--recalcular`
-fuerza el reentrenamiento.
+**Aviso de doble corrección.** Al calcularse los pesos sobre la distribución original y no sobre el
+conjunto ya equilibrado, oversampling y pesos no se anulan: el refuerzo efectivo de `NORMAL` frente a
+`PNEUMONIA` es de 2.89x. COMBINADO no solo corrige el desbalance, lo invierte parcialmente en el
+entrenamiento. Queda registrado en `diagnostico_combinado.advertencia_doble_correccion`.
 
-**Configuración ganadora: `MobileNetV2 lr_1e-3`** (learning rate `1e-3`, dropout `0.3`, 3 épocas,
-entrenada desde cero), con Balanced Accuracy `0.959042` en validation. Esa configuración es el
-**punto de partida fijo** de la sección 8.2 y no se vuelve a explorar.
+No hay comparación de alternativas: COMBINADO es la única estrategia activa y no se mide frente a
+ninguna otra.
 
-### 8.2 Test inicial y optimización del desbalance
+### 8.3 Umbral de decisión
 
-Ejecutable en `src/training/optimizacion_mobilenetv2.py` (CLI: `neumonia test-inicial` y
-`neumonia optimizar`). A diferencia de 8.1, **no** explora learning rate, dropout ni epochs:
-parte del ganador de sensibilidad y evalúa únicamente el tratamiento del desbalance y el alcance
-del fine-tuning. Cada variante aísla **un solo factor** respecto del punto de partida.
+`flujo_final.ajustar_umbral` (CLI: `neumonia umbral`) recorre 91 umbrales (0.05 a 0.95 en pasos de
+0.01, más 0.50 explícito) sobre las probabilidades de `validation` del modelo COMBINADO, **sin** mirar
+el test, y **congela** el de mayor Balanced Accuracy. Persiste la curva completa en
+`results/final/umbral_decision.json` con `test_utilizado: false` y `congelado: true`.
 
-| Variante | Factor aislado | Dataset de entrenamiento |
-|---|---|---|
-| `oversampling_normal` | `NORMAL` equipara a `PNEUMONIA` en `train` | 6 200 (1 073 → 3 100 `NORMAL`) |
-| `class_weight` | Pesos `{0: 1.9445, 1: 0.6731}` solo en `fit` | 4 173 |
-| `finetune_block16` | Capas de `block_16_expand` entrenables (15 de 158) | 4 173 |
-| `finetune_block13` | Capas de `block_13_expand` entrenables (42 de 158) | 4 173 |
-| `finetune_block10` | Capas de `block_10_expand` entrenables (68 de 158) | 4 173 |
+El artefacto incluye `advertencia_optimismo`: como el umbral se maximiza sobre `validation` y ese
+mismo conjunto se reporta, el Balanced Accuracy resultante está sesgado al alza. La diferencia frente
+al 0.5 por defecto debe leerse con esa reserva, y la transferencia del umbral al modelo definitivo
+—entrenado con otra distribución de probabilidades— es una suposición no verificada.
 
-El oversampling se aplica **solo** a `train`; `validation` y `test` no se duplican. El proyecto
-no implementa factores de proporción configurables: `construir_train_oversampling` equipara
-siempre `NORMAL` con `PNEUMONIA`. Los pesos de clase se calculan con
-`sklearn.utils.class_weight.compute_class_weight` sobre el `train`; en TensorFlow 2.15 el
-argumento `class_weight` respeta correctamente los batches de `tf.data`.
+### 8.4 Modelo definitivo
 
-**Secuencia de decisiones:**
+`flujo_final.entrenar_modelo_definitivo` (CLI: `neumonia final`) reentrena COMBINADO sobre
+`train + val` (5.216 imágenes) con el umbral ya congelado. Como no queda validación que monitorear,
+entrena 3 épocas exactas y **guarda los pesos finales explícitamente**: sin `validation` no se añade
+`ModelCheckpoint`, así que el `model.save` es manual. Persiste
+`results/final/final_model_training.json` y `results/final/final_model/best_model.keras`.
 
-1. **Test inicial** (`registrar_test_inicial`): evalúa el checkpoint del ganador de sensibilidad
-   sobre el test original, antes de decidir nada. Deja contraste con la auditoría de sensibilidad.
-2. **Entrenamiento y validación** (`ejecutar_optimizacion`): entrena las cinco variantes con el
-   learning rate `1e-3` del punto de partida y evalúa cada una sobre `validation`.
-3. **Selección** (`seleccionar_ganador_optimizacion`): aplica la regla jerárquica
-   (Balanced Accuracy, ROC-AUC, F1, Accuracy). No hay tolerancias adicionales: el recall se
-   reporta como información, pero no filtra candidatos. `test` no participa de esta decisión.
-4. **Test final** (`registrar_test_final`): se ejecuta **una sola vez**, sobre el modelo ya
-   elegido por `validation`.
+### 8.5 Test final
 
-Resultados completos en `models/optimization_results.json` (`test_inicial`, `resultados`,
-`seleccion`, `test_final`) y checkpoints en `models/mobilenetv2_optimizacion/<variante>/best_model.keras`.
-La función `ejecutar_optimizacion` es independiente del test: se puede invocar para repetir solo
-el entrenamiento y la selección sin volver a medir `test`.
+`flujo_final.evaluar_test` (CLI: `neumonia test`) es la última etapa del flujo. No recibe parámetros,
+no consulta ningún historial de ejecuciones anteriores y no expone banderas de confirmación: se
+ejecuta como cualquier otra etapa.
 
-> **Reproducibilidad.** La etapa se corrigió para que el pipeline de datos sea determinista. Antes
-> de la corrección, `Dataset.shuffle` se creaba sin semilla, las capas `RandomRotation` y
-> `RandomZoom` se creaban sin semilla, y `tf.data` corría el `map` con paralelismo automático; la
-> semilla global se fijaba además *después* de construir los pipelines. El resultado era que dos
-> ejecuciones del mismo código entrenaban sobre imágenes distintas. La corrección vive en
-> `src/utils/reproducibility.py` (`SEMILLA = 42`, `enable_op_determinism()`,
-> `reiniciar_semilla()`, `descripcion_reproducibilidad()`) y en el orden
-> `clear_session()` → `reiniciar_semilla(SEMILLA)` → construir pipeline → construir modelo de
-> `entrenar_variante`, de modo que las cinco variantes ven exactamente los mismos datos.
-> Verificado: dos procesos independientes dan lotes de entrenamiento idénticos byte a byte
-> (`ef090aacf796b100e2e1` en ambos) y dos construcciones del modelo dan los mismos pesos. No se ha
-> ejecutado una segunda corrida completa, por lo que la igualdad de las métricas finales no está
-> comprobada empíricamente. Las diferencias de Balanced Accuracy menores que ~0.01 en este tamaño
-> de validation no son distinguibles con una sola corrida.
+Verifica que existan la decisión y el modelo definitivo, comprueba que el manifiesto declare las 624
+filas del test original, lo carga con `incluir_test=True` **sin oversampling, sin `class_weight` y sin
+augmentation**, aplica el umbral congelado y escribe `results/final/final_test_report.json`,
+`final_test_metrics.csv`, la matriz de confusión, la curva ROC y las probabilidades.
+
+`neumonia run` encadena esta etapa como última del flujo.
 
 ## 9. Resultados reales
 
-Los valores de la comparación de arquitecturas están verificados contra `models/model_results.json`
-tras el reentrenamiento con la nueva división. Cada subsection indica el artefacto del que proceden
-sus cifras, porque el resultado del proyecto no es el de esta etapa: la comparación de
-arquitecturas es la etapa 1 de un flujo de cinco.
+### COMBINADO sobre `validation` (1.043 imágenes)
 
-### Baseline mayoritaria sobre test
+Corrida actual, `MobileNetV2`, umbral de medición 0.5, 3 épocas:
 
-| Métrica | Valor |
+| Balanced Acc | ROC-AUC | F1 | Accuracy | Precision | Recall | Specificity |
+|---:|---:|---:|---:|---:|---:|---:|
+| **0.9549** | **0.9939** | **0.9542** | **0.9348** | 0.9986 | 0.9135 | 0.9963 |
+
+Matriz de confusión: `[[267, 1], [67, 708]]` (TN 267, FP 1, FN 67, TP 708).
+
+### Umbral elegido
+
+| Umbral | Balanced Accuracy | F1 | Accuracy | Precision | Specificity | Recall |
+|---:|---:|---:|---:|---:|---:|---:|
+| 0.50 | 0.9549 | 0.9542 | 0.9348 | 0.9986 | 0.9963 | 0.9135 |
+| **0.38** | **0.9621** | 0.9620 | 0.9434 | 0.9960 | 0.9776 | 0.9466 |
+
+El 0.38 queda congelado por el criterio acordado (máximo Balanced Accuracy, desempate por
+cercanía a 0.5), con Δ +0.0072 frente al 0.5 por defecto. El número está sesgado al alza porque el
+umbral se maximiza sobre el mismo conjunto que se reporta; ver `advertencia_optimismo` en el
+artefacto.
+
+### Baseline mayoritaria sobre test (referencia)
+
+| Métrica | Baseline |
 |---|---:|
-| Balanced Accuracy | 0.5 |
-| Recall/Sensitivity | 1.0 |
-| Specificity | 0.0 |
+| Accuracy | 0.6250 |
+| Balanced Accuracy | 0.5000 |
+| Recall | 1.0000 |
+| Specificity | 0.0000 |
 
-### Resultados sobre `validation` (1.043 imágenes), usados para la selección
+### Test final (624 imágenes: 234 NORMAL / 390 PNEUMONIA)
 
-| Modelo | Balanced Accuracy | Accuracy | Precision | Recall | Specificity | F1 | ROC-AUC |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| MobileNetV2 | 0.9412 | 0.9434 | 0.9773 | 0.9458 | 0.9366 | 0.9613 | 0.9887 |
-| VGG16 | 0.8765 | 0.9108 | 0.9338 | 0.9471 | 0.8060 | 0.9404 | 0.9643 |
-| ResNet50 | 0.5000 | 0.7430 | 0.7430 | 1.0000 | 0.0000 | 0.8526 | 0.8878 |
+`neumonia test`, con el modelo definitivo `MobileNetV2/combinado` entrenado en `train + val` y el
+umbral congelado en 0.38:
 
-ResNet50 predijo todos los casos de `validation` como `PNEUMONIA` (Specificity 0.0 y Balanced Accuracy 0.5000): el Recall aislado no representa un desempeño global adecuado para este problema.
+| Balanced Acc | ROC-AUC | F1 | Accuracy | Precision | Recall | Specificity |
+|---:|---:|---:|---:|---:|---:|---:|
+| **0.9073** | **0.9728** | **0.9292** | **0.9119** | 0.9328 | 0.9256 | 0.8889 |
 
-> **Nota: qué muestran las figuras de `validation` de VGG16 y ResNet50.** Esta tabla y la del README
-> describen el **flujo base** y coinciden con `models/model_results.json`. Las cuatro imágenes
-> `confusion_matrix_validation_vgg16.png`, `confusion_matrix_validation_resnet50.png`,
-> `roc_curve_validation_vgg16.png` y `roc_curve_validation_resnet50.png` se regeneraron para mostrar la
-> **mejor configuración por arquitectura** de la etapa de sensibilidad (`lr=1e-3`, dropout `0.3`,
-> 3 épocas), por lo que no reproducen los números de esta tabla:
->
-> | Figura | TN | FP | FN | TP | Balanced Accuracy | ROC-AUC |
-> |---|---:|---:|---:|---:|---:|---:|
-> | VGG16 | 260 | 8 | 70 | 705 | 0.9399 | 0.9850 |
-> | ResNet50 | 150 | 118 | 67 | 708 | 0.7366 | 0.8931 |
->
-> Con la configuración de sensibilidad, ResNet50 deja de clasificarlo todo como `PNEUMONIA` y su
-> especificidad sube de 0.0 a 0.5597, aunque su Balanced Accuracy (0.7366) sigue siendo la peor de las
-> tres. La observación sobre el recall aislado se mantiene para el flujo base. Ver
-> `references/guia_ejecucion.md`, sección 12.
+Matriz de confusión: `[[208, 26], [29, 361]]` (TN 208, FP 26, FN 29, TP 361).
 
+Con el umbral por defecto de 0.5 sobre las mismas probabilidades: balanced accuracy 0.9026, accuracy
+0.9006, precision 0.9432, recall 0.8949, specificity 0.9103, F1 0.9184. El umbral elegido compra
+recall a costa de specificity y mejora el balanced accuracy, que es el criterio acordado.
 
-### Test del MobileNetV2 base (etapa 1, 624 imágenes originales intactas)
+Artefactos: `results/final/final_test_report.json`, `final_test_metrics.csv`,
+`confusion_matrix_test_final.png`, `roc_curve_test_final.png`, `test_y_true.npy`, `test_y_prob.npy`.
 
-Estos valores son el `test` de la **comparación de arquitecturas**, no el resultado final del
-proyecto: corresponden al MobileNetV2 entrenado con la configuración base (`lr=1e-4`), el
-seleccionado en la etapa 1 y luego sustituido por el ganador de la sensibilidad (sección 8.1) y por
-la variante ganadora de la optimización (sección 8.2).
+**Gap validation → test:** el balanced accuracy pasa de 0.9621 (validation, sesgada por la selección
+del umbral) a 0.9073 (test), una caída de ~0.055. El ROC-AUC se mantiene alto (0.9728 frente a
+0.9939), lo que sugiere que la degradación está en el ajuste del punto de corte y no en el
+ordenamiento de las probabilidades. La transferencia del umbral —elegido con las probabilidades del
+modelo entrenado solo con `train` y aplicado al reentrenado con `train + val`— es la causa más
+probable, y no está verificada empíricamente.
 
-| Métrica | Valor |
-|---:|---:|
-| Accuracy | 0.8381 |
-| Balanced Accuracy | 0.7885 |
-| Precision | 0.8004 |
-| Recall/Sensitivity | 0.9872 |
-| Specificity | 0.5897 |
-| F1 | 0.8840 |
-| ROC-AUC | 0.9545 |
+### Orden de la evaluación de test
 
-Matriz de confusión en test del modelo base: `[[138, 96], [5, 385]]` (TN = 138, FP = 96, FN = 5, TP = 385).
-
-### Criterio de éxito sobre test
-
-| Comprobación | Resultado |
----|---:|
-| Supera baseline (Balanced Accuracy > 0.5) | Sí (0.7885) |
-| Sensibilidad sobre azar (> 0.5) | Sí (0.9872) |
-| Especificidad sobre azar (> 0.5) | Sí (0.5897) |
-| **Cumple el criterio de éxito** | **Sí** |
-
-**Modelo seleccionado en el flujo base: MobileNetV2** (por Balanced Accuracy → ROC-AUC → F1 → Accuracy sobre `validation`).
-
-### Ganador de la sensibilidad de hiperparámetros (validation)
-
-Valores verificados contra `models/sensitivity_results.json`. La etapa evaluó 7 configuraciones
-repetidas en 3 arquitecturas, es decir 21 entrenamientos, y se cerró con `MobileNetV2 lr_1e-3`, que
-es el punto de partida fijo de la optimización.
-
-| Configuración | Balanced Accuracy | Accuracy | Precision | Recall | Specificity | F1 | ROC-AUC |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| **`MobileNetV2 lr_1e-3` (ganadora)** | **0.959042** | 0.964525 | 0.9817 | 0.9703 | 0.9478 | 0.9760 | 0.9936 |
-
-### Test inicial: punto de partida de la optimización
-
-Primera medición sobre el test original del checkpoint ganador de sensibilidad, antes de
-optimizar. Verificada contra `models/optimization_results.json` (`test_inicial`).
-
-| Métrica | Valor |
-|---:|---:|
-| Accuracy | 0.8413 |
-| Balanced Accuracy | 0.7927 |
-| Precision | 0.8038 |
-| Recall/Sensitivity | 0.9872 |
-| Specificity | 0.5983 |
-| F1 | 0.8861 |
-| ROC-AUC | 0.9612 |
-
-Matriz de confusión: `[[140, 94], [5, 385]]` (TN = 140, FP = 94, FN = 5, TP = 385).
-
-### Optimización del desbalance: resultados sobre `validation`
-
-Valores verificados contra `models/optimization_results.json` (`resultados`), ejecución final
-reproducible. Criterio: Balanced Accuracy > ROC-AUC > F1 > Accuracy.
-
-| Variante | Balanced Accuracy | Accuracy | Precision | Recall | Specificity | F1 | ROC-AUC |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| `oversampling_normal` (seleccionada) | 0.960698 | 0.9597 | 0.9867 | 0.9587 | 0.9627 | 0.9725 | 0.9949 |
-| `class_weight` | 0.960193 | 0.9626 | 0.9842 | 0.9652 | 0.9552 | 0.9746 | 0.9931 |
-| Punto de partida (sensibilidad) | 0.959042 | 0.9645 | 0.9817 | 0.9703 | 0.9478 | 0.9760 | 0.9936 |
-| `finetune_block16` | 0.734429 | 0.8629 | 0.8450 | 0.9987 | 0.4701 | 0.9154 | 0.9714 |
-| `finetune_block10` | 0.692164 | 0.8418 | 0.8245 | 1.0000 | 0.3843 | 0.9038 | 0.9746 |
-| `finetune_block13` | 0.611940 | 0.8006 | 0.7884 | 1.0000 | 0.2239 | 0.8817 | 0.9965 |
-
-La regla de selección eligió `oversampling_normal` por tener la mayor Balanced Accuracy (0.9607).
-Conviene precisar qué significa eso: la regla es **jerárquica**, de modo que el desempate se resuelve
-por la primera métrica y solo en caso de igualdad se pasarían a ROC-AUC, F1 y Accuracy. No se exige
-ganar en las cuatro. De hecho, `oversampling_normal` **pierde** frente al punto de partida en F1
-(0.9725 frente a 0.9760) y en Accuracy (0.9597 frente a 0.9645), y frente a `class_weight` pierde en
-Accuracy, Recall y F1, aunque gane en Balanced Accuracy, Precision, Specificity y ROC-AUC.
-`class_weight` quedó a solo 0.0005 de Balanced Accuracy, diferencia no distinguible con una sola
-ejecución.
-
-Las tres variantes de fine-tuning muestran el patrón de colapso: recall 1.0 con especificidad
-entre 0.22 y 0.47.
-
-### Test final: modelo elegido por `validation`
-
-Ejecutado **una sola vez** sobre el modelo seleccionado.
-
-| Métrica | Valor |
-|---:|---:|
-| Modelo | `MobileNetV2-oversampling_normal` |
-| Accuracy | 0.8734 |
-| Balanced Accuracy | 0.8372 |
-| Precision | 0.8418 |
-| Recall/Sensitivity | 0.9821 |
-| Specificity | 0.6923 |
-| F1 | 0.9065 |
-| ROC-AUC | 0.9609 |
-
-Matriz de confusión: `[[162, 72], [7, 383]]` (TN = 162, FP = 72, FN = 7, TP = 383).
-
-> **El modelo seleccionado por `validation` mejoró el `test`.** El test inicial del punto de
-> partida obtuvo Balanced Accuracy 0.7927 y el test final del modelo elegido 0.8372 (+0.0444). La
-> ganancia se concentra en especificidad (0.5983 → 0.6923) y F1 (0.8861 → 0.9065); el recall se
-> mantiene alto (0.9821) y el ROC-AUC es prácticamente idéntico (0.9612 → 0.9609).
-
-### Ejecuciones anteriores de la etapa y su impacto en la selección
-
-Antes de la corrección de reproducibilidad, la etapa se ejecutó varias veces con idéntico código,
-datos y semilla declarada (42). Ninguna de ellas es reproducible, porque el `shuffle` y la
-augmentation se creaban sin semilla. Balanced Accuracy en `validation`:
-
-| Variante | Ejecución A | Ejecución B | **Ejecución final reproducible** |
-|---|---:|---:|---:|
-| `finetune_block16` | 0.6791 | 0.9674 | 0.7344 |
-| `finetune_block10` | 0.7519 | 0.9516 | 0.6922 |
-| `finetune_block13` | 0.8221 | 0.8209 | 0.6119 |
-| `class_weight` | 0.9646 | 0.9566 | 0.9602 |
-| `oversampling_normal` | 0.9555 | 0.9586 | **0.9607** |
-| Punto de partida (cargado, no reentrenado) | 0.9590 | 0.9590 | 0.9590 |
-
-Origen de cada ejecución: **A** = `experiments/optimizacion_pendiente_mobilenetv2/resultados/optimizacion_pendiente.json`;
-**B** = `models/historico/optimization_results_ALEATORIO_NO_CONTROLADO.json`. Se conserva además el
-respaldo `experiments/optimizacion_pendiente_mobilenetv2/NOTA_RESALDO.md`, que documenta por qué no
-son reproducibles. Hubo también una tercera ejecución repetida de diagnóstico cuyos artefactos ya
-no están en el repositorio; sus cifras se han retirado de esta tabla por no ser verificables. Las dos
-ejecuciones que sí tienen artefacto no deben mezclarse con el resultado vigente.
-
-El rango de `finetune_block16` entre las ejecuciones no controladas (0.6791 – 0.9674) es la medida
-del ruido que introducía la ausencia de semilla. Las variantes con **base congelada** se mantenían
-dentro de ~0.01; las variantes con **fine-tuning** llegaban a variar 0.29, y una de las ejecuciones
-colapsó por completo.
-
-En la ejecución reproducible, el fine-tuning **vuelve a colapsar en las tres profundidades**, con
-especificidad entre 0.22 y 0.47. Esto refuerza la hipótesis de la actualización de las estadísticas
-de **Batch Normalization** de los bloques descongelados: con batch size 16, learning rate `1e-3` y
-solo 3 épocas, las medias y varianzas móviles de esos bloques no llegan a estabilizarse. El
-comportamiento es consistente, no azar del pipeline.
-
-**Consecuencia metodológica.** La victoria de `oversampling_normal` sobre el punto de partida es de
-`+0.0017` de Balanced Accuracy en `validation`, una diferencia **muy pequeña** y no distinguible con
-una sola ejecución. Conviene ser precisos sobre qué sostiene la decisión: la variante elegida tiene
-la mayor Balanced Accuracy, que es la primera métrica de una regla **jerárquica**, pero **no supera
-al punto de partida en las cuatro métricas** (gana BA 0.9607 > 0.9590 y ROC-AUC 0.9949 > 0.9936;
-pierde F1 0.9725 < 0.9760 y Accuracy 0.9597 < 0.9645). El `test` no participa en este razonamiento:
-es una medición posterior a una decisión ya tomada y, por diseño, no puede sostenerla. Lo que sí
-puede afirmarse es un hecho descriptivo y no una jerarquía: ninguna de las cinco variantes colapsa
-en `validation`, y el fine-tuning queda descartado de forma consistente en las tres profundidades.
-Con una sola ejecución por variante no es posible ordenar el resto de candidatas por robustez.
-
-### Resultados históricos (fuera del flujo vigente)
-
-### Resultados del tuning de MobileNetV2 (validation)
-
-Valores verificados contra `models/mobilenetv2_tuning_results.json`, salvo la fila de referencia
-`Original (lr 1e-4)`, que procede de la comparación de arquitecturas (`models/model_results.json`)
-porque ese artefacto de tuning no la incluye: sirve de línea base y coincide exactamente con el
-MobileNetV2 del flujo base.
-
-| Configuración | Balanced Accuracy | Accuracy | Precision | Recall | Specificity | F1 | ROC-AUC |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| Original (lr `1e-4`) | 0.9412 | 0.9434 | 0.9773 | 0.9458 | 0.9366 | 0.9613 | 0.9887 |
-| lr `5e-5` | 0.9415 | 0.9530 | 0.9714 | 0.9652 | 0.9179 | 0.9683 | 0.9862 |
-| **lr `3e-4` (seleccionada)** | **0.9547** | **0.9616** | **0.9791** | 0.9690 | 0.9403 | **0.9741** | **0.9928** |
-| dropout `0.5` | 0.9423 | 0.9559 | 0.9703 | 0.9703 | 0.9142 | 0.9703 | 0.9884 |
-| fine-tuning `finetune_block13` | 0.6194 | 0.8044 | 0.7916 | 1.0000 | 0.2388 | 0.8837 | 0.9978 |
-
-El ganador `lr_3e-4` se reentrenó con la misma configuración (final_validation: Balanced Accuracy 0.9555, ROC-AUC 0.9933, F1 0.9774, Accuracy 0.9664, Recall 0.9781, Specificity 0.9328) y se evaluó sobre `test`:
-
-| Métrica | Valor |
----:|---:|
-| Accuracy | 0.8478 |
-| Balanced Accuracy | 0.7987 |
-| Precision | 0.8067 |
-| Recall/Sensitivity | 0.9949 |
-| Specificity | 0.6026 |
-| F1 | 0.8909 |
-| ROC-AUC | 0.9633 |
-
-### Resultados de los experimentos de desbalance (validation)
-
-Valores verificados contra `models/mobilenetv2_desbalance_results.json`.
-
-| Configuración | Balanced Accuracy | Accuracy | Precision | Recall | Specificity | F1 | ROC-AUC |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| Ajustado `lr=3e-4` (referencia) | 0.9555 | 0.9664 | 0.9768 | 0.9781 | 0.9328 | 0.9774 | 0.9933 |
-| Class weights (solo entrenamiento) | 0.9530 | 0.9482 | 0.9865 | 0.9432 | 0.9627 | 0.9644 | 0.9925 |
-| **Oversampling `NORMAL` en train** | **0.9598** | **0.9674** | **0.9805** | **0.9755** | **0.9440** | **0.9780** | **0.9936** |
-
-El oversampling lideró la Balanced Accuracy de validation manteniendo un recall alto (0.9755) y fue la variante elegida. Los class weights mejoraron la especificidad (0.9627) pero redujeron el recall (0.9432) y la Balanced Accuracy, por lo que se descartaron. El ganador se reentrenó (final_validation: Balanced Accuracy 0.9573, ROC-AUC 0.9940) y dio este resultado sobre `test`:
-
-| Métrica | Valor |
----:|---:|
-| Accuracy | **0.8878** |
-| Balanced Accuracy | **0.8590** |
-| Precision | 0.8636 |
-| Recall/Sensitivity | 0.9744 |
-| Specificity | **0.7436** |
-| F1 | **0.9157** |
-| ROC-AUC | 0.9612 |
-
-Matriz de confusión en test de aquel modelo: `[[174, 60], [10, 380]]` (TN = 174, FP = 60, FN = 10, TP = 380).
-
-> Nota: la mejora del oversampling es un hallazgo experimental sobre este dataset y no demuestra que el desbalance fuera la única causa de las diferencias observadas entre las configuraciones.
-
-> **Este resultado ya no es el del proyecto.** Aquel modelo fue
-> `MobileNetV2 + oversampling` sobre el ajuste `lr=3e-4` que la etapa de sensibilidad sustituyó por
-> `lr=1e-3`. El artefacto `models/mobilenetv2_desbalance_results.json` conserva la métrica, pero la
-> ruta de checkpoint que registra (`models/mobilenetv2_desbalance_oversampling/best_model.keras`)
-> **ya no existe** en el repositorio: ese directorio se eliminó al consolidar los experimentos
-> históricos bajo `models/mobilenetv2_tuning/`. Se conserva únicamente como registro histórico.
-> El resultado vigente está en la sección 9: `models/optimization_results.json`.
+El umbral se congela en la etapa 8.3, **antes** de que el modelo definitivo se reentrene y antes de
+que el test se lea. En el momento de la evaluación, la arquitectura, la estrategia, los
+hiperparámetros y el punto de corte ya están cerrados: la evaluación no realimenta ninguna decisión.
 
 ## 10. Testing
 
-La suite se ejecuta con `pytest` (también disponible con `neumonia test`). Contiene **73 pruebas** y la ejecución final terminó con **73 passed**.
+La suite se ejecuta con `pytest` o con `neumonia test-suite`. Contiene **93 pruebas** y la ejecución
+final terminó con **93 passed, 109 warnings** (el tiempo de pared varía entre ejecuciones, en torno
+a 17 s). Las advertencias provienen de dependencias de terceros (futuro fin de soporte de
+`google.api_core` en Python 3.10 y `DeprecationWarning` de `random.randrange` en las pruebas de
+reproducibilidad), no del código del proyecto.
 
-Las pruebas cubren carga y transformación de imágenes, estadísticas y distribución del dataset, construcción de arquitecturas, validación de entradas, matrices de confusión, métricas, selección de modelos, baseline mayoritaria, criterio de éxito, la nueva división (test original intacto, estratificación, ausencia de duplicados por hash, no mezcla del test con train/validation, exclusión del `val` original), la ausencia de `RandomFlip("horizontal")` en la augmentación, la idempotencia de la etapa de sensibilidad, y el aislamiento del `test` en la optimización: el criterio de las cuatro métricas, el desempate jerárquico por ROC-AUC, F1 y Accuracy, el `test` fuera de la selección, que las variantes no repiten los 21 factores ya evaluados y que cada una aísla un solo factor. Las cinco variantes se entrenan **secuencialmente** en un bucle, y no hay ninguna prueba que exija paralelismo.
+Las pruebas cubren carga y transformación de imágenes, estadísticas y distribución del dataset,
+construcción de arquitecturas, métricas y matrices de confusión, selección jerárquica, baseline
+mayoritaria, criterio de éxito, la división experimental (test intacto, estratificación, ausencia de
+duplicados por hash, exclusión del `val` original), la ausencia de `RandomFlip("horizontal")`, las
+cuatro etapas del flujo final y sus rutas de artefactos, y en particular el aislamiento del test:
 
-`tests/test_reproducibilidad.py` cubre específicamente la corrección: semilla única en todo el
-proyecto, `shuffle` sembrado, capas de augmentación sembradas, `deterministic=True`, igualdad de
-lotes entre pipelines construidos por separado, reproducibilidad del oversampling, igualdad de
-pesos iniciales, orden `clear_session()` → `reiniciar_semilla()` → pipeline → modelo, y ausencia de
-tolerancias en el criterio de selección.
+- `construir_pipelines_datos()` no construye el pipeline de test sin `incluir_test=True`;
+- pedir `incluir_test=True` construye el pipeline pero no lee ninguna imagen hasta que se itera, que
+  es lo que hace seguro que `neumonia prepare` valide el split original sin abrir radiografías;
+- la etapa de sensibilidad y la construcción del pipeline de COMBINADO rechazan el split `test`;
+- `evaluar_test()` no recibe parámetros y su fuente no contiene ninguna referencia a un registro de
+  usos, a un flag de contaminación ni a un historial;
+- el pipeline del test se pide con el manifiesto original y sin ninguna bandera de oversampling,
+  `class_weight` o augmentation;
+- `results/registro_test.json` y `results/historico/` no existen;
+- la estrategia retirada no existe ni como código vivo ni como opción de la CLI;
+- los checkpoints de etapas distintas no se pisan entre sí, y el entrenamiento definitivo guarda
+  el modelo explícitamente al no haber `validation` que dispare el `ModelCheckpoint`;
+- cada `.format()` del flujo declara exactamente las claves que le pasa, porque esos mensajes solo se
+  ejecutan al correr el flujo real y un error ahí no lo detecta ninguna prueba de integración;
+- el umbral declara su propio sesgo optimista.
+
+`tests/test_reproducibilidad.py` cubre además la semilla única, `shuffle` sembrado, capas de
+augmentación sembradas, `deterministic=True`, igualdad de lotes entre pipelines construidos por
+separado, reproducibilidad del oversampling, igualdad de pesos iniciales y el orden
+`clear_session()` → `reiniciar_semilla()` → pipeline → modelo.
 
 ## 11. Reproducibilidad
 
-La ejecución validada utilizó Python 3.10.11 en el entorno `.venv` con las dependencias de `requirements.txt` (TensorFlow CPU 2.15.0, NumPy, Pandas, Pillow, Matplotlib, scikit-learn, pytest, click).
+La ejecución validada utilizó Python 3.10.11 en el entorno `.venv` con las dependencias de
+`requirements.txt` (TensorFlow CPU 2.15.0, NumPy, Pandas, Pillow, Matplotlib, scikit-learn, pytest,
+click). Es una ejecución **en CPU**: COMBINADO sobre `train` tardó 445 s, el entrenamiento del
+definitivo 487 s y la evaluación del test unos 20 s (solo inferencia).
 
 Flujo de ejecución:
 
@@ -567,18 +414,20 @@ dvc pull data/raw/chest_xray.dvc
 neumonia eda
 neumonia prepare
 neumonia augment
-neumonia train
 neumonia sensibilidad
-neumonia test-inicial
-neumonia optimizar
-neumonia evaluate
+neumonia combinado
+neumonia umbral
+neumonia final
 neumonia test
+neumonia evaluar
 ```
 
-`neumonia train` y `neumonia sensibilidad` consumen bastante tiempo y recursos. `neumonia sensibilidad`
-no repite los 21 entrenamientos si `models/sensitivity_results.json` ya existe. `neumonia evaluate`
-consulta los resultados guardados sin volver a entrenar. Como alternativa, cada comando puede
-invocarse con `python -m src.cli <comando>`.
+`neumonia run` encadena exactamente esa secuencia y añade la suite de pruebas al final.
+
+`neumonia sensibilidad` y `neumonia combinado` no repiten los entrenamientos si sus artefactos
+existen. `neumonia umbral` y `neumonia test` son baratos; `neumonia umbral` lee las probabilidades de
+validation ya guardadas y `neumonia test` solo hace inferencia. Cada comando puede invocarse también
+como `python -m src.cli <comando>`.
 
 `src/utils/reproducibility.py` es la única fuente de semilla del proyecto (`SEMILLA = 42`) y
 controla siete puntos:
@@ -594,18 +443,13 @@ controla siete puntos:
 | Oversampling | `sample_from_datasets(..., seed=SEMILLA)` |
 
 **Qué está verificado.** Dos procesos independientes con `SEMILLA = 42` producen lotes de
-entrenamiento idénticos byte a byte (`ef090aacf796b100e2e1` en ambos). Antes de la corrección los
-dos procesos producían huellas distintas (`38518e4aa6eb0ba5` y `18bf66fc790a21ba`) con las mismas
-etiquetas, lo que aisló la causa en el pipeline y no en los datos. Dos construcciones del modelo
-tras `reiniciar_semilla(42)` dan los mismos pesos.
+entrenamiento idénticos byte a byte. Dos construcciones del modelo tras `reiniciar_semilla(42)` dan
+los mismos pesos.
 
-**Qué no está verificado.** No se ejecutó una segunda corrida completa del entrenamiento, por lo
+**Qué no está verificado.** No se ejecutó una segunda corrida completa de los entrenamientos, por lo
 que la igualdad exacta de las métricas finales entre ejecuciones no está comprobada empíricamente.
-El rango de Balanced Accuracy en `validation` entre las tres ejecuciones no controladas iba de
-0.006 (base congelada) a 0.288 (fine-tuning); parte de esa dispersión era ruido del pipeline sin
-semilla, pero la etapa de fine-tuning sigue mostrando un comportamiento inestable atribuible a las
-estadísticas de Batch Normalization. Los artefactos de cada etapa quedan guardados para poder
-auditar exactamente qué se evaluó.
+La sección 9 debe leerse como una ejecución concreta, reproducible en su parte de datos, no como
+valores deterministas garantizados de principio a fin.
 
 ## 12. Limitaciones
 
@@ -613,13 +457,16 @@ auditar exactamente qué se evaluó.
 - Existe desbalance entre `NORMAL` y `PNEUMONIA`.
 - Hay duplicados exactos dentro de algunos splits crudos, aunque no entre ellos.
 - El oversampling duplica patrones `NORMAL` existentes en `train` y no genera información nueva; no debe confundirse con nuevas muestras clínicas.
-- **El fine-tuning de las últimas capas de MobileNetV2 empeora de forma consistente el equilibrio entre clases con la configuración actual** (learning rate `1e-3`, batch 16, 3 épocas). En la ejecución reproducible las tres profundidades colapsan en `validation` (Balanced Accuracy 0.7344, 0.6119 y 0.6922; especificidad entre 0.22 y 0.47). La causa probable es la actualización de las estadísticas de Batch Normalization de los bloques descongelados, que no llegan a estabilizarse. No debe considerarse una técnica fiable en este dataset.
-- **La ventaja de la variante ganadora en `validation` es pequeña** (`+0.0017` de Balanced Accuracy sobre el punto de partida) y no es distinguible con una sola ejecución. La decisión se sostiene únicamente en que es la de mayor Balanced Accuracy, la primera métrica de un criterio jerárquico, y en que ninguna otra variante colapsa. Con una sola ejecución por variante no puede afirmarse que sea la más robusta. El `test` se midió después de decidir y sirve para reportar el desempeño final, no para justificar la elección.
-- El tamaño de validation (1.043 imágenes) limita la resolución de las diferencias: cambios de Balanced Accuracy inferiores a ~0.01 no son distinguibles con una sola ejecución por variante.
+- **El fine-tuning de las últimas capas empeora de forma consistente el equilibrio entre clases** con la configuración vigente (learning rate `1e-3`, batch 16, 3 épocas): las tres profundidades colapsan en `validation` con especificidad entre 0.22 y 0.47. La causa probable es la actualización de las estadísticas de Batch Normalization de los bloques descongelados. No debe considerarse una técnica fiable en este dataset, y por eso `construir_modelo_proyecto()` mantiene la base congelada.
+- **COMBINADO dobla la corrección del desbalance.** Los `class_weight` se calculan sobre la distribución original de `train`, así que no se anulan con el oversampling: el refuerzo efectivo de `NORMAL` es de 2.89x. Si se quisieran pesos que no inviertan el balance habría que fijarlos a 1.0, lo que ya no sería COMBINADO.
+- **COMBINADO no se eligió por sus métricas.** Es la única estrategia activa por decisión metodológica del proyecto, y no se mide frente a alternativas. Cualquier informe debe declararlo así: no es el resultado de una comparación.
+- **El Balanced Accuracy de validation está sesgado al alza.** El umbral se maximiza sobre el mismo conjunto que se reporta, de modo que el 0.9621 no es una estimación de desempeño sino un techo de selección.
+- **El gap validation → test es de ~0.055 en Balanced Accuracy** (0.9621 frente a 0.9073). El ROC-AUC apenas cae (0.9939 → 0.9728), lo que sugiere que se degrada el punto de corte y no el ordenamiento de las probabilidades.
+- El umbral `0.38` se ajustó sobre las probabilidades del modelo entrenado solo con `train`; el definitivo se reentrenó con `train + val` y sus probabilidades tienen otra escala. La transferencia del umbral es una suposición razonable, no verificada empíricamente, y es la explicación más probable del gap anterior.
+- El tamaño de validation (1.043 imágenes) y de test (624 imágenes, 234 NORMAL) limita la resolución de las diferencias: cambios de Balanced Accuracy inferiores a ~0.01 no son distinguibles.
 - **No se ejecutó una segunda corrida completa del entrenamiento**, por lo que la reproducibilidad está verificada a nivel de pipeline de datos e inicialización del modelo, no de métricas finales.
-- El resultado del tratamiento del desbalance es experimental y no demuestra que el desbalance fuera la única causa del comportamiento observado.
-- El trabajo es académico y experimental; no hay validación clínica ni despliegue.
 - La normalización es general a `[0, 1]` y no específica de cada backbone.
+- El trabajo es académico y experimental; no hay validación clínica ni despliegue.
 - Los modelos no deben usarse como herramientas de diagnóstico médico.
 
 ## 13. Estado final
@@ -630,15 +477,14 @@ auditar exactamente qué se evaluó.
 | Preparación | Completada |
 | Augmentación | Completada |
 | Modelado | Completado |
-| Entrenamiento | Completado (reentrenado con la nueva división) |
-| Selección de arquitectura | Completado (MobileNetV2) |
-| Sensibilidad de hiperparámetros | Completada (7 configuraciones × 3 arquitecturas = 21 entrenamientos, ganador `lr=1e-3`) |
-| Test inicial | Completado (Balanced Accuracy 0.7927) |
-| Optimización del desbalance | Completada y reproducible (gana `oversampling_normal`, BA val 0.9607) |
-| Test final | Completado (Balanced Accuracy 0.8372) |
-| Evaluación | Completada |
-| Comparación | Completada |
-| Selección final | **Completada**: `MobileNetV2-oversampling_normal` |
-| Testing | 73/73 pruebas aprobadas |
+| Sensibilidad de hiperparámetros | Completada (7 configuraciones × 3 arquitecturas = 21 entrenamientos) |
+| COMBINADO sobre `train` | Completada (BA validation 0.9549, ROC-AUC 0.9939) |
+| Umbral de decisión | Completada (congelado en 0.38, BA validation 0.9621) |
+| Modelo definitivo | Completada (`train + val`, 3 épocas, 487 s) |
+| Test final | Completada (BA 0.9073, ROC-AUC 0.9728, matriz `[[208, 26], [29, 361]]`) |
+| Comparación de estrategias | No forma parte del flujo |
+| Testing | 93/93 pruebas aprobadas |
 | Documentación | Actualizada |
 | Despliegue productivo | Fuera del alcance |
+
+El flujo se ejecuta de principio a fin: `combinado` → `umbral` → `final` → `test`.

@@ -1,4 +1,4 @@
-"""Pruebas de la etapa de sensibilidad de hiperparámetros previa a la selección de arquitecturas."""
+﻿"""Pruebas de la etapa de sensibilidad de hiperparámetros previa a la selección de arquitecturas."""
 
 from __future__ import annotations
 
@@ -14,15 +14,14 @@ from src.training.sensitivity import (
     DROPOUT_BASE,
     EPOCAS_BASE,
     LEARNING_RATE_BASE,
-    RUTA_AUDITORIA_TEST,
     RUTA_RESULTADOS,
-    RUTA_RESULTADOS_ENTRENAMIENTO,
     SPLITS_PERMITIDOS,
-    cargar_punto_de_partida_sensibilidad,
+    cargar_mejor_configuracion_por_arquitectura,
     cargar_resultados_sensibilidad,
     construir_configuraciones,
     crear_pipelines_sensibilidad,
     normalizar_config,
+    registrar_auditoria_test,
     registrar_resultados_existentes,
     seleccionar_mejor_por_arquitectura,
 )
@@ -133,68 +132,20 @@ def test_la_seleccion_ignora_el_test_evenente_que_exista() -> None:
     assert seleccion["VGG16"]["config_id"] == "ref_lr1e-4_do0.3_ep3"
 
 
-def test_la_comparacion_de_arquitecturas_coincide_con_el_ganador_de_sensibilidad(
-    payload: dict[str, Any],
-) -> None:
-    """La arquitectura seleccionada en la etapa base es la que gana la sensibilidad."""
-    resultados = json.loads(RUTA_RESULTADOS_ENTRENAMIENTO.read_text(encoding="utf-8"))
-    comparacion = resultados["validation_comparison"]
-    assert comparacion["winner"]["model_name"] == payload["ganador_global"]["model_name"] == "MobileNetV2"
-    assert {item["model_name"] for item in comparacion["results"]} == set(NOMBRES_MODELOS)
+def test_el_flujo_final_parte_de_las_tres_configuraciones(payload: dict[str, Any]) -> None:
+    """Cada arquitectura conserva su mejor configuración; ninguna se privilegia por ser la global."""
+    configuraciones = cargar_mejor_configuracion_por_arquitectura()
 
-
-def test_la_optimizacion_parte_del_ganador_de_sensibilidad(payload: dict[str, Any]) -> None:
-    """El flujo vigente no vuelve a buscar lr, dropout ni epochs: parte del ganador de sensibilidad."""
-    from src.training.optimizacion_mobilenetv2 import construir_variantes
-
-    punto_de_partida = cargar_punto_de_partida_sensibilidad()
-    assert punto_de_partida["origen"] == str(RUTA_RESULTADOS)
-    assert punto_de_partida["model_name"] == payload["ganador_global"]["model_name"] == "MobileNetV2"
-    assert punto_de_partida["config_id"] == payload["ganador_global"]["config_id"] == "lr_1e-3"
-    assert punto_de_partida["config"]["learning_rate"] == 1e-3
-
-    config = punto_de_partida["config"]
-    variantes = construir_variantes(config)
-    # Ninguna variante vuelve a variar learning rate, dropout ni epochs.
-    for variante in variantes:
-        assert "learning_rate" not in variante
-        assert "dropout" not in variante
-        assert "epochs" not in variante
-    assert {variante["id"] for variante in variantes} == {
-        "oversampling_normal",
-        "class_weight",
-        "finetune_block16",
-        "finetune_block13",
-        "finetune_block10",
-    }
-
-
-def test_el_flujo_vigente_no_parte_del_tuning_historico(payload: dict[str, Any]) -> None:
-    """El desbalance se optimiza sobre la sensibilidad, no sobre el tuning heredado de lr=3e-4."""
-    optimizacion = json.loads(
-        (RUTA_RESULTADOS_ENTRENAMIENTO.parent / "optimization_results.json").read_text(encoding="utf-8")
+    assert set(configuraciones) == set(NOMBRES_MODELOS)
+    for model_name, info in configuraciones.items():
+        assert info["config_id"] == payload["mejor_por_arquitectura"][model_name]["config_id"]
+        assert info["config"] == normalizar_config(payload["mejor_por_arquitectura"][model_name]["config"])
+        assert info["validation"]["balanced_accuracy"] == pytest.approx(
+            payload["mejor_por_arquitectura"][model_name]["validation"]["balanced_accuracy"]
+        )
+    assert configuraciones["VGG16"]["validation"]["balanced_accuracy"] < (
+        payload["ganador_global"]["validation"]["balanced_accuracy"]
     )
-    punto = optimizacion["punto_de_partida"]
-    assert punto["config_id"] == payload["ganador_global"]["config_id"] == "lr_1e-3"
-    assert punto["config"] == {"learning_rate": 1e-3, "dropout": 0.3, "epochs": 3}
-    # La sensibilidad se reutilizó, no se reejecutó.
-    assert optimizacion["sensibilidad"]["numero_de_pruebas"] == 21
-    assert optimizacion["sensibilidad"]["reutilizado_sin_reejecutar"] is True
-    # El test no participó de la decisión.
-    assert optimizacion["test_utilizado_para_seleccion"] is False
-    assert optimizacion["seleccion"]["split"] == "validation"
-    # Las variantes solo reportan validation; el test va en las secciones dedicated.
-    for item in optimizacion["resultados"]:
-        assert "test" not in item
-        assert set(optimizacion["criterio_seleccion"].split(" > ")) <= set(item["validation"])
-
-
-def test_la_auditoria_de_test_esta_separada_de_la_sensibilidad(payload: dict[str, Any]) -> None:
-    auditoria = json.loads(RUTA_AUDITORIA_TEST.read_text(encoding="utf-8"))
-    assert auditoria["ganador_global"]["model_name"] == payload["ganador_global"]["model_name"]
-    assert auditoria["test_del_ganador"]["n_evaluadas"] == 624
-    assert "no forma parte de models/sensitivity_results.json" in auditoria["descripcion"]
-    assert RUTA_AUDITORIA_TEST != RUTA_RESULTADOS
 
 
 def test_normalizar_config_acepta_la_clave_epochs_max() -> None:
@@ -241,6 +192,14 @@ def test_registrar_resultados_existentes_exige_el_barrido_completo(tmp_path: Pat
     )
     with pytest.raises(ValueError):
         registrar_resultados_existentes(origen)
+
+
+def test_la_auditoria_de_test_fue_retirada() -> None:
+    """La sensibilidad ya no publica ninguna métrica de test."""
+    with pytest.raises(RuntimeError, match="test"):
+        registrar_auditoria_test("resultados/auditoria_test.json")
+    assert not (RUTA_RESULTADOS.parent / "sensitivity_test_audit.json").exists()
+    assert not (RUTA_RESULTADOS.parent / "model_results.json").exists()
 
 
 def test_la_cli_expone_el_comando_de_sensibilidad() -> None:

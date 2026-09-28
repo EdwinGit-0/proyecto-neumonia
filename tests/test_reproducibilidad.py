@@ -15,13 +15,12 @@ from PIL import Image
 
 from src.data.datasets import construir_pipelines_datos
 from src.data.splitting import crear_manifiesto_division_estratificada
-from src.training import run_real_training, tuning_desbalance_clases, tuning_mobilenetv2
-from src.training import optimizacion_mobilenetv2
+from src.training import flujo_final, pipeline_entrenamiento, sensitivity, tratamiento_desbalance
 from src.utils import reproducibility
 from src.utils.reproducibility import SEMILLA, configurar_reproducibilidad, reiniciar_semilla
 
 
-def _crear_dataset_minimo(data_dir: Path, Manifest: Path) -> None:
+def _crear_dataset_minimo(data_dir: Path, manifiesto: Path) -> None:
     """Crear un dataset sintetico con train original y test original."""
     for etiqueta in ["NORMAL", "PNEUMONIA"]:
         for carpeta, cantidad in [("train", 10), ("test", 4)]:
@@ -30,7 +29,7 @@ def _crear_dataset_minimo(data_dir: Path, Manifest: Path) -> None:
             for indice in range(cantidad):
                 color = (indice * 7, 20 if etiqueta == "NORMAL" else 40, 30)
                 Image.new("RGB", (16, 16), color=color).save(destino / f"{carpeta}_{etiqueta}_{indice}.png")
-    crear_manifiesto_division_estratificada(data_dir, Manifest, random_state=SEMILLA)
+    crear_manifiesto_division_estratificada(data_dir, manifiesto, random_state=SEMILLA)
 
 
 def _primeros_lotes(dataset, cuantos: int = 2) -> list[tuple[bytes, tuple[int, ...]]]:
@@ -58,8 +57,10 @@ def test_configurar_reproducibilidad_activa_el_determinismo() -> None:
 def test_todo_el_proyecto_usa_la_misma_semilla() -> None:
     """No puede haber una semilla distinta escondida en cada modulo."""
     assert SEMILLA == 42
-    assert run_real_training.SEMILLA == SEMILLA
-    assert optimizacion_mobilenetv2.SEMILLA == SEMILLA
+    assert pipeline_entrenamiento.SEMILLA == SEMILLA
+    assert flujo_final.SEMILLA == SEMILLA
+    assert sensitivity.SEMILLA == SEMILLA
+    assert tratamiento_desbalance.SEMILLA == SEMILLA
     assert reproducibility.SEMILLA == SEMILLA
 
 
@@ -67,7 +68,7 @@ def test_las_capas_de_augmentation_reciben_la_semilla() -> None:
     """RandomRotation y RandomZoom deben llevar ``seed`` explicito."""
     import tensorflow as tf
 
-    capas = run_real_training.crear_capas_augmentation()
+    capas = pipeline_entrenamiento.crear_capas_augmentation()
     aleatorias = [
         capa
         for capa in capas
@@ -117,10 +118,10 @@ def test_la_augmentation_del_train_es_reproducible(tmp_path: Path) -> None:
     manifiesto = tmp_path / "split.csv"
     _crear_dataset_minimo(data_dir, manifiesto)
 
-    primero = run_real_training.construir_pipeline_augmentation(
+    primero = pipeline_entrenamiento.construir_pipeline_augmentation(
         construir_pipelines_datos(data_dir, image_size=(16, 16), batch_size=4, manifiesto_division=manifiesto)["train"]
     )
-    segundo = run_real_training.construir_pipeline_augmentation(
+    segundo = pipeline_entrenamiento.construir_pipeline_augmentation(
         construir_pipelines_datos(data_dir, image_size=(16, 16), batch_size=4, manifiesto_division=manifiesto)["train"]
     )
 
@@ -134,33 +135,82 @@ def test_el_oversampling_es_reproducible(tmp_path: Path) -> None:
     manifiesto = tmp_path / "split.csv"
     _crear_dataset_minimo(data_dir, manifiesto)
 
-    primero, resumen_primero = tuning_desbalance_clases.construir_train_oversampling(
+    primero, pesos_primero, diagnostico_primero = tratamiento_desbalance.construir_train_combinado(
         manifiesto, image_size=(16, 16), batch_size=4
     )
-    segundo, resumen_segundo = tuning_desbalance_clases.construir_train_oversampling(
+    segundo, pesos_segundo, diagnostico_segundo = tratamiento_desbalance.construir_train_combinado(
         manifiesto, image_size=(16, 16), batch_size=4
     )
 
     assert _primeros_lotes(primero) == _primeros_lotes(segundo)
-    assert resumen_primero == resumen_segundo
+    assert pesos_primero == pesos_segundo
+    assert diagnostico_primero == diagnostico_segundo
 
 
-def test_el_criterio_de_seleccion_no_incluye_la_tolerancia_de_recall() -> None:
+def test_el_oversampling_solo_afecta_a_los_splits_pedidos(tmp_path: Path) -> None:
+    """La composicion oversampleada sale solo de los splits indicados, nunca de test."""
+    configurar_reproducibilidad(SEMILLA)
+    data_dir = tmp_path / "chest_xray"
+    manifiesto = tmp_path / "split.csv"
+    _crear_dataset_minimo(data_dir, manifiesto)
+
+    from src.data.splitting import cargar_manifiesto_division
+
+    marco = cargar_manifiesto_division(manifiesto)
+    filas_train = int((marco["split"] == "train").sum())
+    filas_combinado = int(marco["split"].isin(["train", "val"]).sum())
+
+    _, _, diagnostico = tratamiento_desbalance.construir_train_combinado(
+        manifiesto, image_size=(16, 16), batch_size=4, splits=("train",)
+    )
+    _, _, diagnostico_combinado = tratamiento_desbalance.construir_train_combinado(
+        manifiesto, image_size=(16, 16), batch_size=4, splits=("train", "val")
+    )
+    resumen = diagnostico["detalle_oversampling"]
+    resumen_combinado = diagnostico_combinado["detalle_oversampling"]
+
+    assert diagnostico["splits"] == ["train"]
+    assert resumen["total_original"] == filas_train
+    assert diagnostico_combinado["splits"] == ["train", "val"]
+    assert resumen_combinado["total_original"] == filas_combinado
+    assert resumen["total_oversampled"] == 2 * max(
+        resumen["NORMAL_original"], resumen["PNEUMONIA_original"]
+    )
+    assert resumen_combinado["total_oversampled"] == 2 * max(
+        resumen_combinado["NORMAL_original"], resumen_combinado["PNEUMONIA_original"]
+    )
+
+
+def test_el_tratamiento_del_desbalance_rechaza_el_test(tmp_path: Path) -> None:
+    """Ni oversampling ni class weights pueden aplicarse al test original."""
+    configurar_reproducibilidad(SEMILLA)
+    data_dir = tmp_path / "chest_xray"
+    manifiesto = tmp_path / "split.csv"
+    _crear_dataset_minimo(data_dir, manifiesto)
+
+    with pytest.raises(ValueError, match="test"):
+        tratamiento_desbalance.aplicar_oversampling(
+            tratamiento_desbalance.subconjunto_entrenamiento(manifiesto, ("test",))
+        )
+    with pytest.raises(ValueError, match="test"):
+        tratamiento_desbalance.calcular_pesos_clase(manifiesto, splits=("test",))
+
+
+def test_el_criterio_de_seleccion_es_el_acordado() -> None:
     """La seleccion se define solo por las cuatro metricas acordadas."""
-    from src.training.tuning_mobilenetv2 import CRITERIO_METRICAS
-
-    assert tuple(CRITERIO_METRICAS) == ("balanced_accuracy", "roc_auc", "f1", "accuracy")
-    assert not hasattr(tuning_mobilenetv2, "TOLERANCIA_RECALL")
+    assert tuple(sensitivity.CRITERIO_METRICAS) == ("balanced_accuracy", "roc_auc", "f1", "accuracy")
+    assert not hasattr(flujo_final, "TOLERANCIA_RECALL")
+    assert not hasattr(sensitivity, "TOLERANCIA_RECALL")
 
 
 def test_el_modelo_also_es_reproducible() -> None:
     """Dos construcciones del modelo tras reiniciar la semilla dan los mismos pesos."""
-    import numpy as np
+    from src.models.architectures import construir_modelo_proyecto
 
     vectores = []
     for _ in range(2):
         reiniciar_semilla(SEMILLA)
-        model = tuning_mobilenetv2.construir_modelo_mobilenetv2_tunable(dropout=0.3, learning_rate=1e-3)
+        model = construir_modelo_proyecto("MobileNetV2", dropout=0.3, learning_rate=1e-3)
         vectores.append(np.concatenate([np.asarray(pesos).ravel() for pesos in model.get_weights()]))
 
     assert vectores[0].shape == vectores[1].shape
@@ -168,33 +218,20 @@ def test_el_modelo_also_es_reproducible() -> None:
 
 
 def test_la_construccion_del_pipeline_ocurre_despues_de_fijar_la_semilla() -> None:
-    """El orden documentado en ``entrenar_variante`` debe cumplirse de verdad."""
+    """El orden documentado en la corrida debe cumplirse de verdad."""
     import inspect
 
-    fuente = inspect.getsource(optimizacion_mobilenetv2.entrenar_variante)
-    cuerpo = fuente.split('"""', 2)[-1]
+    fuente = inspect.getsource(flujo_final.ejecutar_combinado)
 
-    assert cuerpo.index("reiniciar_semilla") < cuerpo.index("construir_pipeline")
+    assert fuente.index("reiniciar_semilla") < fuente.index("construir_pipeline_combinado")
 
 
-@pytest.mark.parametrize(
-    "variante_id, indice, capa",
-    [
-        ("finetune_block16", 143, "block_16_expand"),
-        ("finetune_block13", 116, "block_13_expand"),
-        ("finetune_block10", 90, "block_10_expand"),
-    ],
-)
-def test_las_variantes_de_fine_tuning_conservan_su_bloque(
-    variante_id: str, indice: int, capa: str
-) -> None:
-    """Cada variante de fine-tuning sigue descongelando el bloque que le toca."""
-    variantes = {
-        variante["id"]: variante
-        for variante in optimizacion_mobilenetv2.construir_variantes(
-            {"learning_rate": 1e-3, "dropout": 0.3, "epochs": 3}
-        )
-    }
+def test_el_flujo_final_tiene_una_sola_estrategia() -> None:
+    """El flujo final usa COMBINADO y no mantiene la comparacion de alternativas."""
+    import src.training.tratamiento_desbalance as tratamiento_desbalance
 
-    assert variantes[variante_id]["fine_tune_from"] == indice
-    assert variantes[variante_id]["capa_descongelada"] == capa
+    assert tratamiento_desbalance.NOMBRE_ESTRATEGIA == "combinado"
+    assert not hasattr(flujo_final, "NOMBRES_ESTRATEGIAS")
+    assert not hasattr(flujo_final, "ESTRATEGIAS")
+    # Una sola estrategia y una sola arquitectura: no hay rejilla que recorrer.
+    assert flujo_final.MODELO_FINAL == "MobileNetV2"

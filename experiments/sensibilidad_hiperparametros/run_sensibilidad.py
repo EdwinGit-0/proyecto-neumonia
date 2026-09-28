@@ -13,8 +13,10 @@ Reglas:
 - Mismo dataset, división, preprocesamiento, augmentation, semilla (42) y arquitectura
   base congelada que el proyecto original.
 - Solo TRAIN y VALIDATION participan en la comparación y en la selección.
-- TEST (624 imágenes) se carga y evalúa únicamente al final, como auditoría
-  retrospectiva de la configuración ya seleccionada sobre VALIDATION.
+- TEST (624 imágenes) no se carga, no se evalúa y no se consulta en ningún punto de
+  este experimento. La única evaluación sobre TEST del proyecto es la evaluación final
+  del modelo definitivo, que se ejecuta una sola vez y después de cerrar todas las
+  decisiones (``src/training/flujo_final.py``).
 
 Uso:
     python -m experiments.sensibilidad_hiperparametros.run_sensibilidad
@@ -47,7 +49,7 @@ if str(RAIZ_PROYECTO) not in sys.path:
 from src.data.datasets import construir_pipelines_datos
 from src.data.splitting import cargar_manifiesto_division
 from src.models.evaluation import calcular_matriz_confusion, calcular_reporte_metricas
-from src.training.run_real_training import construir_pipeline_augmentation
+from src.training.pipeline_entrenamiento import construir_pipeline_augmentation
 from src.utils.paths import DIRECTORIO_DATOS
 
 # ---------------------------------------------------------------------------
@@ -69,13 +71,11 @@ DIRECTORIO_CHECKPOINTS = DIRECTORIO_EXPERIMENTO / "checkpoints"
 RUTA_MANIFIESTO = RAIZ_PROYECTO / "data" / "interim" / "stratified_split_train80_val20_test_original.csv"
 RUTA_RESULTADOS = DIRECTORIO_RESULTADOS / "sensibilidad_resultados.json"
 RUTA_SELECCION = DIRECTORIO_RESULTADOS / "seleccion.json"
-RUTA_AUDITORIA = DIRECTORIO_RESULTADOS / "auditoria_test.json"
-RUTA_REFERENCIA_MONOGRAFIA = RAIZ_PROYECTO / "models" / "model_results.json"
 
 
 def rutas_solo_lectura() -> list[Path]:
     """Rutas del proyecto que este experimento solo puede leer."""
-    return [RUTA_MANIFIESTO, RUTA_REFERENCIA_MONOGRAFIA]
+    return [RUTA_MANIFIESTO]
 
 
 def verificar_aislamiento() -> None:
@@ -173,11 +173,19 @@ def crear_pipelines(splits: tuple[str, ...] = ("train", "val")) -> dict[str, tf.
     configuraciones partan de exactamente el mismo orden de datos y del mismo
     estado de augmentation, de modo que las diferencias se deban solo al
     hiperparámetro modificado.
+
+    El split ``test`` se rechaza: la sensibilidad solo admite TRAIN y VALIDATION.
     """
+    prohibidos = [split for split in splits if split not in ("train", "val")]
+    if prohibidos:
+        raise ValueError(
+            f"Este experimento no admite los splits {prohibidos}: la sensibilidad usa solo train y val."
+        )
+
     manifiesto = cargar_manifiesto_division(RUTA_MANIFIESTO)
     disponibles = {
         split
-        for split in ("train", "val", "test")
+        for split in ("train", "val")
         if not manifiesto[manifiesto["split"] == split].empty
     }
     pedidos = [split for split in splits if split in disponibles]
@@ -435,66 +443,11 @@ def ejecutar_seleccion(datos: dict[str, Any]) -> dict[str, Any]:
     return seleccion
 
 
-def ejecutar_auditoria_test(datos: dict[str, Any], seleccion: dict[str, Any]) -> dict[str, Any]:
-    """Evaluar sobre TEST las configuraciones ya seleccionadas en VALIDATION.
-
-    Auditoría retrospectiva: el test no participa en ninguna decisión. Este paso solo
-    se ejecuta si la selección previa está completa y guardada.
-    """
-    if not (RUTA_SELECCION.exists() and RUTA_RESULTADOS.exists()):
-        raise RuntimeError("La selección sobre validación debe completarse antes de auditar TEST.")
-
-    pipelines = crear_pipelines(("test",))
-    manifiesto = cargar_manifiesto_division(RUTA_MANIFIESTO)
-    filas_test = int((manifiesto["split"] == "test").sum())
-    auditoria: dict[str, Any] = {
-        "advertencia": "Auditoría retrospectiva. TEST no se usó para seleccionar ni para ajustar hiperparámetros.",
-        "n_test": filas_test,
-        "clases_test": {
-            "NORMAL": int(((manifiesto["split"] == "test") & (manifiesto["label"] == "NORMAL")).sum()),
-            "PNEUMONIA": int(((manifiesto["split"] == "test") & (manifiesto["label"] == "PNEUMONIA")).sum()),
-        },
-        "modelos": {},
-    }
-
-    for model_name, info in seleccion.items():
-        if model_name == "ganador_global":
-            continue
-        config_id = info["ganador"]
-        checkpoint = ruta_checkpoint(model_name, config_id)
-        if not checkpoint.exists():
-            auditoria["modelos"][model_name] = {
-                "config_id": config_id,
-                "estado": "no_ejecutado",
-                "motivo": f"Checkpoint no encontrado: {checkpoint}",
-            }
-            _marcar(f"AUDITORIA {model_name}: checkpoint no encontrado")
-            continue
-
-        _marcar(f"AUDITORIA TEST {model_name} config={config_id}")
-        tf.keras.backend.clear_session()
-        tf.keras.utils.set_random_seed(SEMILLA)
-        modelo = tf.keras.models.load_model(checkpoint)
-        metricas = evaluar_dataset(modelo, pipelines["test"])
-        auditoria["modelos"][model_name] = {
-            "config_id": config_id,
-            "config": info["config"],
-            "estado": "completado",
-            "test": metricas,
-        }
-        del modelo
-        tf.keras.backend.clear_session()
-
-    RUTA_AUDITORIA.write_text(json.dumps(auditoria, indent=2), encoding="utf-8")
-    return auditoria
-
-
 def main() -> int:
-    """Ejecutar el barrido de sensibilidad y, al final, la auditoría sobre TEST."""
+    """Ejecutar el barrido de sensibilidad y la selección sobre VALIDATION."""
     parser = argparse.ArgumentParser(description="Sensibilidad de hiperparámetros (experimento aislado)")
     parser.add_argument("--modelo", choices=list(NOMBRES_MODELOS), help="Ejecutar solo un modelo")
     parser.add_argument("--rehacer", action="store_true", help="Reentrenar aunque exista resultado")
-    parser.add_argument("--sin-test", action="store_true", help="No ejecutar la auditoría sobre TEST")
     args = parser.parse_args()
 
     verificar_aislamiento()
@@ -519,10 +472,6 @@ def main() -> int:
             )
             guardar_resultados(datos)
 
-    if args.modelo or args.sin_test:
-        _marcar("Sweep terminado (sin auditoría de TEST en esta ejecución).")
-        return 0
-
     faltan = [
         f"{m}/{c['id']}"
         for m in NOMBRES_MODELOS
@@ -530,41 +479,29 @@ def main() -> int:
         if datos["resultados"].get(f"{m}/{c['id']}", {}).get("estado") != "completado"
     ]
     if faltan:
-        _marcar(f"INCOMPLETO, no se selecciona ni se audita TEST. Faltan: {faltan}")
+        _marcar(f"INCOMPLETO, no se selecciona. Faltan: {faltan}")
         return 1
 
     seleccion = ejecutar_seleccion(datos)
     RUTA_SELECCION.write_text(json.dumps(seleccion, indent=2), encoding="utf-8")
     _marcar(f"SELECCION guardada: {json.dumps(seleccion.get('ganador_global'), default=str)}")
 
-    auditoria = ejecutar_auditoria_test(datos, seleccion)
-    _marcar("AUDITORIA TEST completada")
-
     hashes_fin = {str(ruta): sha256_archivo(ruta) for ruta in rutas_solo_lectura()}
     datos["manifiesto"]["sha256_fin"] = hashes_fin[str(RUTA_MANIFIESTO)]
     datos["manifiesto"]["sin_modificar"] = bool(
         hashes_inicio[str(RUTA_MANIFIESTO)] == hashes_fin[str(RUTA_MANIFIESTO)]
     )
-    datos["referencia_monografia_sha256"] = {
-        str(RUTA_REFERENCIA_MONOGRAFIA): {
-            "inicio": hashes_inicio[str(RUTA_REFERENCIA_MONOGRAFIA)],
-            "fin": hashes_fin[str(RUTA_REFERENCIA_MONOGRAFIA)],
-            "sin_modificar": bool(
-                hashes_inicio[str(RUTA_REFERENCIA_MONOGRAFIA)] == hashes_fin[str(RUTA_REFERENCIA_MONOGRAFIA)]
-            ),
-        }
-    }
+    datos.pop("auditoria_test", None)
     datos["seleccion"] = seleccion
-    datos["auditoria_test"] = auditoria
+    datos["test_utilizado"] = False
     datos["segundos_totales"] = float(time.time() - inicio_total)
     datos["finalizado"] = datetime.now(timezone.utc).isoformat()
     guardar_resultados(datos)
 
-    modificados = [ruta for ruta, valor in datos["referencia_monografia_sha256"].items() if not valor["sin_modificar"]]
-    if modificados:
-        _marcar(f"ATENCION: archivos del proyecto modificados: {modificados}")
+    if datos["manifiesto"]["sin_modificar"]:
+        _marcar("Integridad verificada: manifiesto sin cambios.")
     else:
-        _marcar("Integridad verificada: manifiesto y resultados del proyecto sin cambios.")
+        _marcar("ATENCION: el manifiesto del proyecto fue modificado.")
     return 0
 
 

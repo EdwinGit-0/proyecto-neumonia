@@ -1,0 +1,2 @@
+split,umbral,accuracy,precision,recall,specificity,balanced_accuracy,f1,roc_auc,matriz_tn,matriz_fp,matriz_fn,matriz_tp
+validation,0.5,0.9348034515819751,0.998589562764457,0.9135483870967742,0.996268656716418,0.954908521906596,0.954177897574124,0.9938613384689456,267,1,67,708

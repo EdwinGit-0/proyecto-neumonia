@@ -94,3 +94,8 @@ target/
 data/raw/chest_xray/
 # Trained model artifacts
 models/*/best_model.keras
+# Pipeline final: checkpoints, probabilidades y logs de ejecucion (se regeneran)
+results/final/combinado/
+results/final/final_model/
+results/**/*.npy
+logs/

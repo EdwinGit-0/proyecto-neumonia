@@ -21,10 +21,10 @@ Reglas de la etapa:
   documentada del entrenamiento base.
 - La selección usa el criterio jerárquico del proyecto: Balanced Accuracy >
   ROC-AUC > F1 > Accuracy, calculado exclusivamente sobre ``validation``.
-- Los resultados se guardan en ``models/sensitivity_results.json``. La evaluación
-  sobre ``test`` es una etapa posterior y separada, registrada en
-  ``models/sensitivity_test_audit.json``; nunca forma parte de este artefacto ni
-  participa en la selección.
+- Los resultados se guardan en ``models/sensitivity_results.json``. Ninguna evaluación
+  sobre ``test`` forma parte de esta etapa: la única evaluación de test del proyecto es
+  la final del modelo definitivo (``src/training/flujo_final.py``), ejecutada una sola
+  vez y después de cerrar todas las decisiones.
 
 Uso:
 
@@ -44,16 +44,14 @@ from typing import Any
 
 import numpy as np
 import tensorflow as tf
-from tensorflow.keras import layers
-from tensorflow.keras.applications import MobileNetV2, ResNet50, VGG16
 from tensorflow.keras.models import Model
 
 from src.data.datasets import construir_pipelines_datos
 from src.data.splitting import cargar_manifiesto_division
-from src.models.architectures import NOMBRES_MODELOS
+from src.models.architectures import NOMBRES_MODELOS, construir_modelo_proyecto
 from src.models.comparison import construir_tabla_resultados
 from src.models.evaluation import calcular_matriz_confusion, calcular_reporte_metricas, seleccionar_mejor_modelo
-from src.training.run_real_training import construir_pipeline_augmentation
+from src.training.pipeline_entrenamiento import construir_pipeline_augmentation
 from src.utils.paths import DIRECTORIO_DATOS, DIRECTORIO_MODELOS, RAIZ_PROYECTO, asegurar_directorio
 from src.utils.reproducibility import SEMILLA, configurar_reproducibilidad, reiniciar_semilla
 
@@ -86,12 +84,7 @@ SPLITS_PERMITIDOS = ("train", "val")
 
 RUTA_MANIFIESTO = RAIZ_PROYECTO / "data" / "interim" / "stratified_split_train80_val20_test_original.csv"
 RUTA_RESULTADOS = DIRECTORIO_MODELOS / "sensitivity_results.json"
-RUTA_AUDITORIA_TEST = DIRECTORIO_MODELOS / "sensitivity_test_audit.json"
-RUTA_RESULTADOS_ENTRENAMIENTO = DIRECTORIO_MODELOS / "model_results.json"
 DIRECTORIO_CHECKPOINTS = DIRECTORIO_MODELOS / "sensitivity_checkpoints"
-
-CLAVE_COMPARACION_BASE = "validation_comparison_configuracion_base"
-CLAVE_COMPARACION = "validation_comparison"
 
 
 def construir_configuraciones() -> list[dict[str, Any]]:
@@ -120,33 +113,18 @@ def construir_configuraciones() -> list[dict[str, Any]]:
 
 
 def construir_modelo_sensibilidad(model_name: str, dropout: float, learning_rate: float) -> Model:
-    """Construir la arquitectura base del proyecto con ``dropout`` y ``lr`` variables.
+    """Construir la arquitectura del proyecto con ``dropout`` y ``lr`` variables.
 
-    Réplica exacta de ``src/models/architectures.py`` (base ImageNet congelada y
-    cabeza GAP -> Dense(128, relu) -> Dropout -> Dense(1, sigmoid) compilada con
-    Adam y ``binary_crossentropy``). Solo cambia el valor de los dos
-    hiperparámetros que la etapa varía.
+    Delega en :func:`src.models.architectures.construir_modelo_proyecto`, que es el
+    único punto de construcción de arquitecturas del proyecto, de modo que la
+    sensibilidad y el flujo final comparen modelos idénticos salvo en el
+    hiperparámetro que cada uno varía.
     """
-    if model_name not in NOMBRES_MODELOS:
-        raise ValueError(f"Modelo no compatible: {model_name}")
-
-    constructores = {"VGG16": VGG16, "ResNet50": ResNet50, "MobileNetV2": MobileNetV2}
-    base_model = constructores[model_name](include_top=False, weights="imagenet", input_shape=(*TAMANO_IMAGEN, 3))
-    base_model.trainable = False
-
-    x = base_model.output
-    x = layers.GlobalAveragePooling2D()(x)
-    x = layers.Dense(128, activation="relu")(x)
-    x = layers.Dropout(dropout)(x)
-    outputs = layers.Dense(1, activation="sigmoid")(x)
-
-    model = Model(inputs=base_model.input, outputs=outputs, name=model_name)
-    model.compile(
-        optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate),
-        loss="binary_crossentropy",
-        metrics=["accuracy"],
+    return construir_modelo_proyecto(
+        model_name=model_name,
+        dropout=dropout,
+        learning_rate=learning_rate,
     )
-    return model
 
 
 def crear_pipelines_sensibilidad(splits: tuple[str, ...] = SPLITS_PERMITIDOS) -> dict[str, tf.data.Dataset]:
@@ -585,67 +563,34 @@ def ejecutar_barrido_sensibilidad() -> dict[str, Any]:
     )
 
 
-def actualizar_comparacion_modelos(payload: dict[str, Any]) -> dict[str, Any]:
-    """Publicar en ``model_results.json`` la comparación basada en sensibilidad.
+def cargar_mejor_configuracion_por_arquitectura(
+    ruta: Path = RUTA_RESULTADOS,
+) -> dict[str, dict[str, Any]]:
+    """Devolver la mejor configuración de **cada** arquitectura según la sensibilidad.
 
-    La comparación histórica de la configuración base se conserva íntegra bajo
-    ``validation_comparison_configuracion_base``; no se altera ningún otro
-    resultado (incluido ``final_test``).
-    """
-    if not RUTA_RESULTADOS_ENTRENAMIENTO.exists():
-        raise FileNotFoundError(f"No existe {RUTA_RESULTADOS_ENTRENAMIENTO}.")
-
-    resultados = json.loads(RUTA_RESULTADOS_ENTRENAMIENTO.read_text(encoding="utf-8"))
-    if CLAVE_COMPARACION_BASE not in resultados:
-        resultados[CLAVE_COMPARACION_BASE] = resultados[CLAVE_COMPARACION]
-    resultados[CLAVE_COMPARACION] = payload["comparacion_modelos"]
-    resultados["sensibilidad"] = {
-        "descripcion": (
-            "Etapa de sensibilidad previa a la seleccion de arquitecturas. "
-            "La comparacion usa la mejor configuracion por arquitectura, medida solo sobre validation."
-        ),
-        "results_file": str(RUTA_RESULTADOS),
-        "test_file": str(RUTA_AUDITORIA_TEST),
-        "criterio_seleccion": list(CRITERIO_METRICAS),
-        "configuracion_base": payload["configuracion_base"],
-        "grupos": payload["grupos"],
-        "configuraciones_por_arquitectura": {
-            model_name: info["config"] for model_name, info in payload["mejor_por_arquitectura"].items()
-        },
-        "ganador_global": payload["ganador_global"],
-        "test_utilizado_en_sensibilidad": False,
-    }
-
-    temporal = RUTA_RESULTADOS_ENTRENAMIENTO.with_suffix(".json.tmp")
-    temporal.write_text(json.dumps(resultados, indent=2, default=str), encoding="utf-8")
-    temporal.replace(RUTA_RESULTADOS_ENTRENAMIENTO)
-    return resultados
-
-
-def cargar_punto_de_partida_sensibilidad(ruta: Path = RUTA_RESULTADOS) -> dict[str, Any]:
-    """Devolver la configuración ganadora de la sensibilidad que se debe optimizar.
-
-    Es el punto de partida de la etapa de optimización de MobileNetV2: la
-    arquitectura elegida por la sensibilidad y su mejor configuración, medidas
-    solo sobre ``validation``.
+    Es el punto de partida del flujo final de estrategias: cada arquitectura conserva
+    la mejor configuración medida solo sobre ``validation``, y no se privilegia
+    ninguna por ser la ganadora global. Así la comparación de estrategias de
+    desbalance se hace sobre las tres arquitecturas por separado.
     """
     payload = cargar_resultados_sensibilidad(ruta)
-    ganador = payload["ganador_global"]
-    punto_de_partida = {
-        "model_name": ganador["model_name"],
-        "config_id": ganador["config_id"],
-        "config": dict(ganador["config"]),
-        "validation": dict(ganador["validation"]),
-        "validation_completa": dict(payload["mejor_por_arquitectura"][ganador["model_name"]]["validation"]),
-        "criterio_seleccion": list(CRITERIO_METRICAS),
-        "origen": str(ruta),
-    }
-    if punto_de_partida["model_name"] != "MobileNetV2":
-        raise ValueError(
-            "La optimización de MobileNetV2 solo puede aplicarse si la sensibilidad elige MobileNetV2; "
-            f"la configuración seleccionada fue {punto_de_partida['model_name']}."
-        )
-    return punto_de_partida
+    seleccion = payload.get("mejor_por_arquitectura", {})
+    if not seleccion:
+        raise ValueError(f"{ruta} no contiene la seleccion por arquitectura de la sensibilidad.")
+
+    configuraciones: dict[str, dict[str, Any]] = {}
+    for model_name, info in seleccion.items():
+        configuraciones[model_name] = {
+            "config_id": info["config_id"],
+            "config": normalizar_config(info["config"]),
+            "validation": dict(info["validation"]),
+            "criterio_seleccion": list(CRITERIO_METRICAS),
+            "origen": str(ruta),
+        }
+    faltantes = sorted(NOMBRES_MODELOS - set(configuraciones))
+    if faltantes:
+        raise ValueError(f"La sensibilidad no tiene configuracion seleccionada para: {faltantes}")
+    return configuraciones
 
 
 def resumir_sensibilidad(payload: dict[str, Any]) -> list[dict[str, Any]]:
@@ -666,59 +611,16 @@ def resumir_sensibilidad(payload: dict[str, Any]) -> list[dict[str, Any]]:
     return construir_tabla_resultados(filas)
 
 
-def registrar_auditoria_test(ruta_origen: str | Path) -> dict[str, Any]:
-    """Registrar en un artefacto separado la evaluación sobre TEST ya realizada.
+def registrar_auditoria_test(*_args: Any, **_kwargs: Any) -> None:
+    """Retirado: la etapa de sensibilidad ya no evalúa el test original.
 
-    La auditoría de TEST **no** forma parte de la etapa de sensibilidad: se
-    ejecuta únicamente después de cerrar la selección sobre ``validation`` y no
-    interviene en ninguna decisión. Se guarda en ``models/sensitivity_test_audit.json``
-    para dejar constancia del paso de TEST del modelo ganador en el flujo del
-    proyecto.
+    Se conserva el nombre solo para que unimporte antiguo falle de forma explícita
+    en lugar de dejar constancia de un artefacto de test inexistente.
     """
-    origen = Path(ruta_origen)
-    if not origen.exists():
-        raise FileNotFoundError(f"No existe el archivo de auditoría de origen: {origen}")
-
-    datos = json.loads(origen.read_text(encoding="utf-8"))
-    payload = cargar_resultados_sensibilidad()
-    ganador_global = payload["ganador_global"]
-
-    modelos = {
-        model_name: {
-            "config_id": registro["config_id"],
-            "config": dict(registro["config"]),
-            "estado": registro.get("estado"),
-            "test": registro.get("test"),
-        }
-        for model_name, registro in datos.get("modelos", {}).items()
-    }
-
-    auditoria = {
-        "descripcion": (
-            "Auditoria de TEST del modelo ganador de la sensibilidad. "
-            "Etapa posterior e independiente: no forma parte de models/sensitivity_results.json "
-            "y no interviene en la seleccion."
-        ),
-        "split_manifest": str(RUTA_MANIFIESTO),
-        "n_test": int(datos.get("n_test", 0)),
-        "clases_test": dict(datos.get("clases_test", {})),
-        "seleccion_por_arquitectura": {
-            model_name: info["config_id"] for model_name, info in payload["mejor_por_arquitectura"].items()
-        },
-        "ganador_global": ganador_global,
-        "modelos": modelos,
-        "test_del_ganador": modelos.get(ganador_global["model_name"], {}).get("test"),
-        "procedencia": {
-            "tipo": "auditoria_ya_medida",
-            "archivo_origen": str(origen),
-            "sha256_origen": sha256_archivo(origen),
-        },
-        "finalizado": datetime.now(timezone.utc).isoformat(),
-    }
-
-    asegurar_directorio(RUTA_AUDITORIA_TEST.parent)
-    RUTA_AUDITORIA_TEST.write_text(json.dumps(auditoria, indent=2, default=str), encoding="utf-8")
-    return auditoria
+    raise RuntimeError(
+        "La auditoría de test fue retirada: el test original solo se evalúa una vez, "
+        "con el modelo definitivo, en src.training.flujo_final."
+    )
 
 
 def refrescar_derivados(payload: dict[str, Any]) -> dict[str, Any]:
@@ -737,8 +639,8 @@ def refrescar_derivados(payload: dict[str, Any]) -> dict[str, Any]:
 def ejecutar_analisis_sensibilidad(recalcular: bool = False, generar_figura: bool = True) -> dict[str, Any]:
     """Ejecutar la etapa de sensibilidad: barrido completo o reutilización del artefacto.
 
-    Guarda ``models/sensitivity_results.json``, publica la comparación de
-    ``model_results.json`` y genera la figura de la etapa. No evalúa el test.
+    Guarda ``models/sensitivity_results.json`` y genera la figura de la etapa. No
+    evalúa el test ni publica resultados en ningún otro artefacto del proyecto.
     """
     if recalcular:
         payload = ejecutar_barrido_sensibilidad()
@@ -746,7 +648,6 @@ def ejecutar_analisis_sensibilidad(recalcular: bool = False, generar_figura: boo
         payload = refrescar_derivados(cargar_resultados_sensibilidad())
 
     guardar_resultados_sensibilidad(payload)
-    actualizar_comparacion_modelos(payload)
 
     if generar_figura:
         from src.visualization.visualize import graficar_sensibilidad

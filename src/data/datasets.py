@@ -44,13 +44,23 @@ def construir_pipelines_datos(
     validation_split: str = "val",
     test_split: str = "test",
     manifiesto_division: str | Path | None = None,
+    incluir_test: bool = False,
 ) -> dict[str, tf.data.Dataset]:
-    """Crear los datasets de entrenamiento, validación y prueba desde carpetas o un manifiesto."""
+    """Crear los pipelines de entrenamiento y validacion, y opcionalmente el de prueba.
+
+    El split de prueba queda excluido por defecto: la evaluacion final es la unica que
+    debe iterarlo, y se pide explicitamente con ``incluir_test=True``. Esto convierte el
+    aislamiento del test en una garantia estructural y no solo en una convencion.
+    """
     dataset_path = Path(directorio_dataset)
     dataframe = cargar_manifiesto_division(manifiesto_division) if manifiesto_division else construir_dataframe_dataset(dataset_path)
 
+    splits = ["train", validation_split]
+    if incluir_test:
+        splits.append(test_split)
+
     datasets: dict[str, tf.data.Dataset] = {}
-    for split_name in ["train", validation_split, test_split]:
+    for split_name in splits:
         split_df = dataframe[dataframe["split"] == split_name].copy()
         if split_df.empty:
             continue

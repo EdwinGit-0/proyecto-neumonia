@@ -1,555 +1,395 @@
-# Guía de ejecución
+# Guía de ejecución del proyecto
 
-Esta guía describe cómo reproducir el flujo actual del proyecto en Windows PowerShell. Los comandos se basan en los módulos y rutas existentes.
+Guía paso a paso para ejecutar el proyecto de clasificación de neumonía en radiografías de tórax.
+Cada etapa del flujo se documenta con su comando, su artefacto de salida, su tiempo aproximado y
+las decisiones que toma. **El test original solo se consulta en la última etapa.**
 
-## 1. Requisitos previos
+Para el detalle técnico de cada componente ver `references/documentacion_proyecto.md`.
 
-- Windows PowerShell.
-- Python 3.10 o compatible con TensorFlow CPU 2.15.0. La ejecución validada utilizó Python 3.10.11.
-- Git para obtener el repositorio.
-- Acceso al remoto Google Drive configurado en DVC.
-- Espacio suficiente para el dataset y los checkpoints.
+---
 
-El entrenamiento de los tres modelos es costoso en CPU y requiere varios gigabytes para imágenes, dependencias y artefactos.
+## 1. Requisitos
 
-## 2. Abrir el proyecto
-
-Después de clonar el repositorio, entrar en su carpeta:
-
-```powershell
-git clone <URL_DEL_REPOSITORIO>
-Set-Location proyecto-neumonia
-```
-
-La URL concreta no está almacenada en este repositorio y debe sustituirse por la URL real del repositorio disponible para el usuario.
-
-## 3. Crear y activar el entorno
+- Python `3.10.11` (validado con esa versión)
+- Dataset restaurado con DVC en `data/raw/chest_xray/`
+- CPU es suficiente; no se requiere GPU
 
 ```powershell
 py -3.10 -m venv .venv
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned
 .\.venv\Scripts\Activate.ps1
-```
-
-También se puede ejecutar directamente el intérprete del entorno sin activarlo:
-
-```powershell
-.\.venv\Scripts\python.exe --version
-```
-
-## 4. Instalar dependencias
-
-```powershell
-.\.venv\Scripts\python.exe -m pip install --upgrade pip setuptools wheel
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
-```
-
-El archivo de requisitos incluye las dependencias de análisis, TensorFlow CPU y DVC con soporte para Google Drive.
-
-## 5. Configurar DVC
-
-La configuración del proyecto ya contiene un remoto llamado `google_drive`. Se puede comprobar con:
-
-```powershell
-dvc remote list
-dvc status
-```
-
-No se deben ejecutar `dvc init` ni crear otro remoto. Si el acceso al remoto requiere autenticación, DVC solicitará la configuración correspondiente; no se deben guardar credenciales en el repositorio.
-
-## 6. Recuperar el dataset
-
-```powershell
 dvc pull data/raw/chest_xray.dvc
 ```
 
-El comando recupera `data/raw/chest_xray/` a partir del archivo `data/raw/chest_xray.dvc` y del remoto DVC configurado.
-
-## 7. Verificar el dataset
+Todos los comandos siguientes usan el intérprete del entorno virtual:
 
 ```powershell
-$images = Get-ChildItem data/raw/chest_xray -File -Recurse | Where-Object { $_.Extension -match '\.(jpe?g|png)$' }
-$images.Count
-Get-ChildItem data/raw/chest_xray -Directory -Recurse
+.\.venv\Scripts\python.exe -m src.cli <comando>
 ```
 
-La copia validada contiene 5.856 imágenes JPEG organizadas en `train`, `val` y `test`, con las clases `NORMAL` y `PNEUMONIA`. Esta es la estructura original del dataset crudo.
+La forma abreviada `neumonia <comando>` requiere que el paquete esté instalado en el entorno
+(`.\.venv\Scripts\pip.exe install -e .`).
 
-Para el modelado se utiliza un reparto experimental estratificado que divide el `train` original (5.216 imágenes) en aproximadamente 80% `train` y 20% `validation` (semilla 42, sin duplicados por contenido entre conjuntos). El `test` original de 624 imágenes permanece intacto y las 16 imágenes del `val` original no se utilizan:
+---
 
-- Manifiesto: `data/interim/stratified_split_train80_val20_test_original.csv`;
-- train: 4.173 imágenes (1.073 NORMAL, 3.100 PNEUMONIA);
-- validation: 1.043 imágenes (268 NORMAL, 775 PNEUMONIA);
-- test: 624 imágenes (234 NORMAL, 390 PNEUMONIA), íntegro del dataset crudo.
-
-## 8. Flujo rápido con la CLI `neumonia`
-
-El proyecto incluye una interfaz de línea de comandos (CLI) que permite ejecutar cada etapa con un comando corto. La CLI solo invoca las funciones existentes del proyecto; no cambia la lógica científica ni los resultados.
-
-Los comandos disponibles son:
+## 2. Orden de ejecución
 
 ```powershell
-neumonia eda          # Análisis exploratorio de datos (sección 9)
-neumonia prepare      # Preparación de datos: manifiesto 80/20 (train original) y verificación de pipelines (sección 10)
-neumonia augment      # Figura de ejemplos de augmentación (sección 11.1)
-neumonia train        # Entrenar VGG16, ResNet50 y MobileNetV2; evaluar, comparar y seleccionar (sección 11)
-neumonia sensibilidad # 7 configuraciones x 3 arquitecturas = 21 entrenamientos; no se repite si el artefacto existe (sección 11.2)
-neumonia test-inicial # Test del checkpoint ganador de sensibilidad, antes de optimizar (sección 11.3)
-neumonia optimizar    # 5 variantes + selección sobre validation + test final (sección 11.3)
-neumonia evaluate     # Mostrar los resultados guardados sin volver a entrenar (sección 14)
-neumonia test         # Ejecutar la suite de pruebas con pytest (sección 15)
-neumonia run          # Flujo completo: EDA -> preparación -> augmentación -> sensibilidad -> optimización (con test inicial y test final) -> suite de pruebas
+neumonia eda            # 1. Análisis exploratorio
+neumonia prepare        # 2. Manifiesto estratificado 80/20
+neumonia augment        # 3. Figura de ejemplos de augmentación
+neumonia sensibilidad   # 4. 21 entrenamientos (cerrada, no repetir)
+neumonia combinado       # 5. COMBINADO sobre train, medido en validation
+neumonia umbral         # 6. Congela el umbral de decisión
+neumonia final          # 7. Reentrena el definitivo sobre train + val
+   neumonia test           # 8. Evaluación del test original con el umbral congelado
+   neumonia evaluar        # 9. Consulta de resultados
 ```
 
-`neumonia sensibilidad` acepta `--recalcular` para reentrenar las 21 pruebas aunque el artefacto ya exista, y `neumonia test` acepta `--verbose` / `-v`.
+`neumonia run` encadena todas las etapas, incluida la evaluación del test, y termina con la suite de
+pruebas.
 
-Los comandos `tune` y `desbalance` se eliminaron de la CLI (ver sección 8.2).
+---
 
-Cada comando de la CLI equivale exactamente al entry point `python -m ...` de las secciones siguientes.
+## 3. Etapas 1 a 3: preparación
 
-### 8.1 Instalar y dejar el comando disponible
-
-La CLI se registra junto con el proyecto en el paso 4 mediante `pip install -r requirements.txt` (requisito `-e .`). Si las dependencias se instalaron antes de que existiera la CLI, registrar el ejecutable con:
-
-```powershell
-.\.venv\Scripts\python.exe -m pip install -e .
-```
-
-Con el entorno activado, el comando queda disponible directamente:
+### 3.1 Análisis exploratorio
 
 ```powershell
-neumonia --help
-neumonia eda --help
-```
-
-### 8.2 Flujo recomendado
-
-```powershell
-dvc pull data/raw/chest_xray.dvc
 neumonia eda
+```
+
+Verifica la integridad de las imágenes, muestra la distribución de clases y detecta duplicados por
+SHA-256 dentro de los splits crudos. No escribe artefactos de resultados.
+
+### 3.2 Preparación de datos
+
+```powershell
 neumonia prepare
+```
+
+Genera `data/interim/stratified_split_train80_val20_test_original.csv` con `random_state=42`.
+Divide **solo** las 5.216 imágenes del `train` original en `train` (4.173) y `validation` (1.043),
+y asigna las 624 del `test` original sin modificarlas. Las 16 imágenes del `val` original quedan
+excluidas. Agrupa por hash para que contenidos idénticos no se repartan entre conjuntos.
+
+Después verifica que los tres pipelines sean construibles. Usa `incluir_test=True` únicamente para
+comprobar que el split original existe; como el dataset es perezoso (`from_generator`), no se lee
+ninguna imagen de test.
+
+### 3.3 Ejemplos de augmentación
+
+```powershell
 neumonia augment
-neumonia train
+```
+
+Escribe `reports/figures/data_augmentation_examples.png`. La augmentación es
+`RandomRotation(0.05)` + `RandomZoom(0.05)` y se aplica **solo** a `train`. No se usa
+`RandomFlip("horizontal")` por la lateralidad anatómica.
+
+---
+
+## 4. Etapa 4: sensibilidad de hiperparámetros (21 entrenamientos)
+
+```powershell
 neumonia sensibilidad
-neumonia test-inicial
-neumonia optimizar
-neumonia evaluate
+```
+
+Explora 7 configuraciones × 3 arquitecturas = 21 entrenamientos con la base congelada, y escribe
+`models/sensitivity_results.json`. Cada configuración varía **un solo factor** respecto de la
+referencia (`lr=1e-4, dropout=0.3, 3` épocas):
+
+| `id` | learning rate | dropout | epochs |
+|---|---:|---:|---:|
+| `ref_lr1e-4_do0.3_ep3` | 1e-4 | 0.3 | 3 |
+| `lr_3e-4` | 3e-4 | 0.3 | 3 |
+| `lr_1e-3` | 1e-3 | 0.3 | 3 |
+| `do_0.2` | 1e-4 | 0.2 | 3 |
+| `do_0.5` | 1e-4 | 0.5 | 3 |
+| `ep_5` | 1e-4 | 0.3 | 5 |
+| `ep_10` | 1e-4 | 0.3 | 10 |
+
+Resultados (Balanced Accuracy en `validation`):
+
+| `id` | MobileNetV2 | ResNet50 | VGG16 |
+|---|---:|---:|---:|
+| `ref_lr1e-4_do0.3_ep3` | 0.940246 | 0.500000 | 0.875888 |
+| `lr_3e-4` | 0.955816 | 0.668938 | 0.930794 |
+| **`lr_1e-3`** | **0.959042** | **0.736625** | **0.939913** |
+| `do_0.2` | 0.944552 | 0.499355 | 0.880840 |
+| `do_0.5` | 0.939670 | 0.500000 | 0.851129 |
+| `ep_5` | 0.938659 | 0.522684 | 0.918955 |
+| `ep_10` | 0.956026 | 0.688101 | 0.925407 |
+
+**Las tres arquitecturas ganan con `lr=1e-3`, `dropout=0.3` y 3 épocas.** El learning rate es el
+factor dominante; ninguna variante de dropout o de épocas supera a `1e-3`. Con la referencia `1e-4`,
+ResNet50 colapsaba a BA 0.5 (especificidad 0.0).
+
+> Esta etapa está **completa y no debe repetirse**: son 21 entrenamientos. La etapa 5 parte de este
+> JSON. Para forzar el reentrenamiento existe `--recalcular`, pero no es necesario.
+
+Equivalente desde el experimento, si se quiere regenerar el informe:
+
+```powershell
+.\.venv\Scripts\python.exe experiments\sensibilidad_hiperparametros\run_sensibilidad.py
+.\.venv\Scripts\python.exe experiments\sensibilidad_hiperparametros\generar_informe.py
+```
+
+---
+
+## 5. Etapa 5: entrenamiento con la estrategia única COMBINADO
+
+```powershell
+neumonia combinado
+```
+
+Lee la mejor configuración por arquitectura de la sensibilidad y entrena **una sola** corrida:
+MobileNetV2 con COMBINADO, medido en `validation`. No hay rejilla de estrategias ni de
+arquitecturas. Para rehacerla: `neumonia combinado --recalcular`.
+
+### 5.1 Qué hace COMBINADO
+
+| Paso | Detalle |
+|---|---|
+| Oversampling | `NORMAL` se equipara con `PNEUMONIA` en `train` (1.073 → 3.100), hasta 6.200 filas efectivas |
+| Class weights | `{0: 1.9445, 1: 0.6731}`, calculados sobre la distribución **original** de `train` |
+| Ámbito | Ambos se aplican **solo** a `train`: oversampling al pipeline, pesos a la función de pérdida de `fit` |
+| Validation | Queda intacta: 268 NORMAL / 775 PNEUMONIA, ni oversampling ni pesos |
+
+La función rechaza explícitamente cualquier solicitud que incluya el split `test`.
+
+### 5.2 Aviso sobre la doble corrección
+
+Como los pesos se calculan sobre la distribución original y no sobre el conjunto ya
+equilibrado, no se anulan entre sí: el refuerzo total de `NORMAL` frente a `PNEUMONIA` es de
+**2.89x** (1.00 por el oversampling × 2.89 por los pesos). Es decir, COMBINADO no solo corrige el
+desbalance, lo invierte parcialmente en el entrenamiento.
+
+Esto está registrado en `diagnostico_combinado.advertencia_doble_correccion` dentro de
+`results/final/combinado_validacion.json`. Si en el futuro se quisieran pesos que no inviertan el
+balance, habría que fijarlos a 1.0 y quedarse solo con el oversampling; eso ya no es COMBINADO.
+
+### 5.3 Resultado en validation (umbral 0.5)
+
+| Métrica | Valor |
+|---|---:|
+| Balanced Accuracy | 0.9549 |
+| Recall | 0.9135 |
+| Specificity | 0.9963 |
+| Precision | 0.9986 |
+| F1 | 0.9542 |
+| ROC-AUC | 0.9939 |
+| Accuracy | 0.9348 |
+| Matriz de confusión | TN 267 / FP 1 / FN 67 / TP 708 |
+
+Artefactos:
+
+```text
+results/final/combinado_validacion.json    # métricas, diagnóstico y pesos
+results/final/combinado_validacion.csv     # tabla de una fila
+results/final/validacion_y_{true,prob}.npy # probabilidades para el umbral
+results/final/combinado/best_model.keras   # checkpoint de esta etapa
+```
+
+### 5.4 Por qué no hay comparación de estrategias
+
+El proyecto tiene una sola estrategia activa: **COMBINADO** (oversampling 50/50 sobre `train` más
+`class_weight` en la pérdida). No existe comando ni código para comparar sin tratamiento, oversampling,
+class weights o la combinación: esa decisión está cerrada y no se vuelve a medir. Reimplementarla
+consumiría horas de CPU sin cambiar el flujo.
+
+El tratamiento se aplica **únicamente** a los splits de entrenamiento. `validation` y `test` conservan
+su distribución original y nunca se reponderan.
+
+---
+
+## 6. Etapas 6 a 7: umbral y modelo definitivo
+
+### 6.1 Umbral de decisión
+
+```powershell
+neumonia umbral
+```
+
+Recorre 91 umbrales (0.05 a 0.95 en pasos de 0.01, más 0.50 explícito) sobre las probabilidades de
+`validation` del modelo COMBINADO y **congela** el de mayor Balanced Accuracy. No toca el test.
+
+| Umbral | Balanced Accuracy | Precision | Specificity | Recall |
+|---:|---:|---:|---:|---:|
+| 0.50 | 0.9549 | 0.9986 | 0.9963 | 0.9135 |
+| **0.38** | **0.9621** | 0.9960 | 0.9776 | 0.9466 |
+
+**Umbral congelado: `0.38`** (Δ BA +0.0072 frente a 0.50). Escribe
+`results/final/umbral_decision.json` con la curva completa de 91 puntos y los campos
+`test_utilizado: false` y `congelado: true`.
+
+> **Cuidado con este número.** El umbral se eligió maximizando balanced accuracy sobre
+> `validation`, y ese mismo conjunto es el que se reporta: el 0.9621 está sesgado al alza, y la
+> diferencia frente al 0.5 por defecto se amplifica al recalcularla sobre las probabilidades del
+> modelo definitivo. El artefacto incluye esta advertencia en `advertencia_optimismo`.
+
+### 6.2 Modelo definitivo
+
+```powershell
+neumonia final
+```
+
+Reentrena `MobileNetV2/combinado` sobre `train + val` (5.216 imágenes: 1.341 NORMAL / 3.875
+PNEUMONIA) con el umbral `0.38` ya congelado. Como no queda validación que monitorear, entrena 3
+épocas exactas y guarda los pesos finales explícitamente (sin `validation` no hay `ModelCheckpoint`).
+No vuelve a mirar `validation`.
+
+Artefactos: `results/final/final_model_training.json` y
+`results/final/final_model/best_model.keras`.
+
+**Tiempo real: 163 s/época en CPU.**
+
+---
+
+## 7. Etapa 8: evaluación del test final
+
+```powershell
 neumonia test
 ```
 
-El orden importa: cada etapa lee el artefacto JSON de la etapa anterior y **no vuelve a
-entrenar lo ya resuelto**.
+Es la última etapa del flujo. Se ejecuta normalmente, sin banderas de confirmación y sin consultar
+ningún historial de ejecuciones anteriores.
 
-| Orden | Comando            | Qué hace                                                          | Artefacto principal               |
-| ----- | ------------------ | ----------------------------------------------------------------- | --------------------------------- |
-| 1     | `neumonia eda`     | Inspección del dataset                                            | `reports/figures/`                |
-| 2     | `neumonia prepare` | Manifiesto 80/20 + test original intacto                          | `data/interim/...csv`             |
-| 3     | `neumonia augment` | Figura de ejemplos de augmentación                                | `reports/figures/`                |
-| 4     | `neumonia train`   | VGG16, ResNet50 y MobileNetV2                                     | `models/model_results.json`       |
-| 5     | `neumonia sensibilidad` | 7 configuraciones x 3 arquitecturas = 21 entrenamientos | `models/sensitivity_results.json` |
-| 6     | `neumonia test-inicial` | Test del ganador de sensibilidad                               | `models/optimization_results.json`|
-| 7     | `neumonia optimizar` | 5 variantes + selección sobre validation + test final          | `models/optimization_results.json`|
-| 8     | `neumonia evaluate`| Consulta los resultados guardados sin entrenar                   | —                                 |
-| 9     | `neumonia test`    | Pruebas automatizadas                                             | —                                 |
+### Qué hace
 
-`neumonia sensibilidad` es la etapa más costosa (21 entrenamientos). Si `models/sensitivity_results.json`
-ya existe, el comando **no la repite**: solo registra el resultado disponible. Esa es la razón por la
-que las etapas 6 y 7 pueden ejecutarse sin haber entrenado los 21 experimentos en la sesión actual.
+1. Verifica que exista la decisión congelada (`results/final/decision_modelo.json`) y el modelo
+   definitivo (`results/final/final_model/best_model.keras`).
+2. Comprueba que el manifiesto declare las 624 filas del test original.
+3. Carga el pipeline del test con `incluir_test=True` a partir del manifiesto original, **sin
+   oversampling, sin `class_weight` y sin augmentation**: usa las imágenes y la distribución tal
+   como están (234 `NORMAL`, 390 `PNEUMONIA`).
+4. Aplica el umbral congelado en la etapa 6 y calcula las métricas.
+5. Guarda `results/final/final_test_report.json`, `results/final/final_test_metrics.csv`, la matriz de
+   confusión, la curva ROC y las probabilidades (`test_y_true.npy`, `test_y_prob.npy`).
 
-`neumonia train`, `neumonia sensibilidad` y `neumonia optimizar` consumen bastante tiempo y recursos
-en CPU. `neumonia run` encadena todo ese recorrido, aunque **no** invoca `neumonia train`: la etapa 1
-queda fuera porque la sensibilidad ya evalúa las tres arquitecturas. Para repetir solo la optimización
-con variantes ya entrenadas:
+### Orden respecto al umbral
 
-```powershell
-neumonia optimizar --reusar
-```
+El umbral se congela en la etapa 6, **antes** de entrenar el modelo definitivo y antes de leer el
+test. La evaluación no realimenta ninguna decisión: el modelo, la arquitectura, la estrategia y el
+punto de corte ya están cerrados cuando el test se lee.
 
-Los comandos `tune` y `desbalance` se han **eliminado de la CLI**: correspondían a una
-experimentación histórica anterior (`lr=3e-4` y oversampling) que quedó superada por la etapa de
-sensibilidad. Sus artefactos siguen en `models/mobilenetv2_tuning_results.json` y
-`models/mobilenetv2_desbalance_results.json`, y el código que los generaba se conserva únicamente
-en `src/training/tuning_mobilenetv2.py` y `src/training/tuning_desbalance_clases.py`. El
-checkpoint que el artefacto de desbalance declara
-(`models/mobilenetv2_desbalance_oversampling/best_model.keras`) ya no existe en el repositorio. No
-deben usarse para tomar decisiones nuevas.
+### Resultados de la corrida
 
-Como alternativa, cada comando se puede invocar con el intérprete del entorno sin activarlo:
+| Métrica (umbral congelado) | Valor |
+|---|---:|
+| Accuracy | 0.9119 |
+| Precision | 0.9328 |
+| Recall | 0.9256 |
+| Specificity | 0.8889 |
+| F1 | 0.9292 |
+| Balanced Accuracy | 0.9073 |
+| ROC-AUC | 0.9728 |
 
-```powershell
-.\.venv\Scripts\python.exe -m src.cli train
-```
+Matriz de confusión: **TN 208 / FP 26 / FN 29 / TP 361**.
 
-## 9. Ejecutar el EDA
+Con el umbral por defecto de 0.5, sobre las mismas probabilidades: accuracy 0.9006, precision
+0.9432, recall 0.8949, specificity 0.9103, balanced accuracy 0.9026, F1 0.9184. El umbral elegido
+compensa su mayor recall a costa de algo de specificity, y mejora el balanced accuracy.
 
-El módulo ejecutable del EDA es:
+---
+
+## 8. Etapas 9 a 10: consulta y pruebas
+
+### 8.1 Consultar resultados
 
 ```powershell
-.\.venv\Scripts\python.exe -m src.data.make_dataset
+neumonia evaluar
 ```
 
-El comando valida la estructura, inspecciona las imágenes y genera figuras en `reports/figures/`. El notebook asociado es `notebooks/01_comprension_datos_eda.ipynb`.
+Muestra los artefactos guardados sin volver a entrenar y sin tocar el test.
 
-## 10. Ejecutar la preparación
-
-La preparación genera el manifiesto experimental (80% train / 20% validation del train original; test original de 624 intacto; semilla 42; sin duplicados por contenido entre conjuntos) mediante `crear_manifiesto_division_estratificada`:
+### 8.2 Suite de pruebas
 
 ```powershell
-.\.venv\Scripts\python.exe -c "from src.data.splitting import crear_manifiesto_division_estratificada; r=crear_manifiesto_division_estratificada('data/raw/chest_xray', 'data/interim/stratified_split_train80_val20_test_original.csv', random_state=42); print(r.groupby('split').size().to_dict())"
+neumonia test-suite
 ```
 
-Después se construyen los datasets TensorFlow sobre ese reparto con `construir_pipelines_datos`:
+O directamente:
 
 ```powershell
-.\.venv\Scripts\python.exe -c "from src.data.datasets import construir_pipelines_datos; d=construir_pipelines_datos('data/raw/chest_xray', image_size=(224,224), batch_size=16, manifiesto_division='data/interim/stratified_split_train80_val20_test_original.csv'); print({k: v for k, v in d.items()})"
+.\.venv\Scripts\python.exe -m pytest -q
 ```
 
-El pipeline carga imágenes RGB, las redimensiona a `224 x 224`, normaliza a `[0, 1]`, asigna las etiquetas binarias y crea datasets TensorFlow para `train` (4.173), `validation` (1.043) y `test` (624).
+Estado actual: **94 passed, 110 warnings** (en torno a 16 s; el tiempo varía entre ejecuciones).
+Las advertencias provienen de dependencias de terceros, no del código del proyecto.
 
-## 11. Entrenar los tres modelos
+Las pruebas verifican, entre otras cosas:
 
-El entry point real del entrenamiento es:
+- el aislamiento estructural del test: que `construir_pipelines_datos()` no construya el pipeline de
+  test salvo que se pida, y que la etapa de sensibilidad y la construcción del pipeline de COMBINADO
+  rechacen el split `test`;
+- que la estrategia retirada no siga disponible como opción, ni como código vivo ni en la ayuda de
+  la CLI;
+- que los checkpoints de etapas distintas no se pisen entre sí;
+- que el entrenamiento definitivo guarde el modelo explícitamente, ya que sin `validation` no hay
+  `ModelCheckpoint`;
+- que cada `.format()` del flujo declare exactamente las claves que le pasa (estos mensajes solo se
+  ejecutan al correr el flujo real);
+- que el umbral declare su propio sesgo optimista;
+- que `evaluar_test` no reciba parámetros ni consulte historial, y que `neumonia test` no exponga
+  banderas de confirmación.
 
-```powershell
-.\.venv\Scripts\python.exe -m src.training.run_real_training
-```
+---
 
-Este comando sí vuelve a entrenar VGG16, ResNet50 y MobileNetV2. Produce los checkpoints, las curvas, las matrices y `models/model_results.json`. No debe ejecutarse para una simple consulta de resultados ya existentes.
-
-Los tres modelos se entrenan sobre el subconjunto `train` del reparto experimental (4.173 imágenes) y se validan sobre `validation` (1.043 imágenes). El `test` original (624 imágenes) no participa en entrenamiento ni en selección; en esta etapa se evalúa únicamente el modelo ganador al final.
-
-### 11.1 Generar la figura de ejemplos de augmentación
-
-Para visualizar el efecto de la augmentation sobre una imagen real del `train` (la misma empleada en el entrenamiento), existe un entry point independiente que no reentrena modelos:
-
-```powershell
-.\.venv\Scripts\python.exe -m src.visualization.visualize
-```
-
-Genera `reports/figures/data_augmentation_examples.png`, una figura de 2x2 con la imagen original y variantes obtenidas únicamente con `RandomRotation(0.05)` y `RandomZoom(0.05)`. El volteo horizontal fue eliminado del pipeline porque en radiografías de tórax puede existir información de lateralidad anatómica (marcadores L/R) que un volteo horizontal podría invertir artificialmente.
-
-### 11.2 Sensibilidad de hiperparámetros de MobileNetV2
-
-La búsqueda de hiperparámetros de MobileNetV2 se ejecuta con:
-
-```powershell
-neumonia sensibilidad
-```
-
-Equivale a:
-
-```powershell
-.\.venv\Scripts\python.exe -m src.training.sensitivity
-```
-
-Explora **7 configuraciones** de hiperparámetros sobre el reparto experimental, variando learning
-rate, dropout y número de épocas, y repite cada una en **las tres arquitecturas**: son 21
-entrenamientos en total. El fine-tuning **no** se explora aquí; todas las arquitecturas se entrenan
-desde cero. Los valores son:
-
-| Eje | Valores |
-|---|---|
-| Learning rate | `1e-4` (referencia), `3e-4`, `1e-3` |
-| Dropout | `0.3` (referencia), `0.2`, `0.5` |
-| Épocas | `3` (referencia), `5`, `10` |
-
-La selección es **exclusivamente sobre `validation`**, con el criterio jerárquico (Balanced Accuracy,
-ROC-AUC, F1, Accuracy). El `test` original no se toca en esta etapa.
-
-Esta etapa es la más costosa del proyecto. Si `models/sensitivity_results.json` ya existe, el
-comando **no vuelve a ejecutarla**: solo registra y muestra el resultado disponible. Para
-reentrenarla de todos modos, usar `neumonia sensibilidad --recalcular`. Los checkpoints de cada
-configuración quedan en `experiments/sensibilidad_hiperparametros/checkpoints/` y los resultados en
-`experiments/sensibilidad_hiperparametros/resultados/sensibilidad_resultados.json`.
-
-**Configuración ganadora (`MobileNetV2 lr_1e-3`)**, que es el punto de partida fijo de la etapa
-de optimización:
-
-| Parámetro      | Valor    |
-| -------------- | -------- |
-| Learning rate  | `1e-3`   |
-| Dropout        | `0.3`    |
-| Épocas         | `3`      |
-| Entrenamiento  | desde cero |
-| Balanced Accuracy en validation | `0.959042` |
-
-Sus resultados de `validation` están graficados en:
-
-- `reports/figures/confusion_matrix_validation_mobilenetv2-sensibilidad.png` (TN 254, FP 14, FN 23, TP 752);
-- `reports/figures/roc_curve_validation_mobilenetv2-sensibilidad.png` (ROC-AUC `0.9936`).
-
-Estas dos figuras son distintas de las de `validation` del flujo base que lista la sección 12: las
-base corresponden al punto de partida del ajuste fino, y las `-sensibilidad` al ganador de
-hiperparámetros que arranca la optimización. La etapa de sensibilidad no persiste rutas de figura
-en `models/sensitivity_results.json`, por lo que estas figuras no tienen vínculo artifact→figura.
-
-Una vez elegida, esta configuración **no se vuelve a explorar**: la optimización posterior
-únicamente evalúa el tratamiento del desbalance y el alcance del fine-tuning.
-
-### 11.3 Test inicial y optimización del desbalance
-
-El flujo vigente de optimización se ejecuta con:
-
-```powershell
-neumonia test-inicial   # evalúa el checkpoint ganador de sensibilidad sobre test
-neumonia optimizar      # 5 variantes + selección sobre validation + test final
-```
-
-Equivale a:
-
-```powershell
-.\.venv\Scripts\python.exe -m src.cli test-inicial
-.\.venv\Scripts\python.exe -m src.cli optimizar
-```
-
-El punto de partida es **fijo** y se lee de `models/sensitivity_results.json`; no se reentrena
-ninguno de los 21 experimentos. A partir de ese punto de partida se entrenan cinco variantes,
-cada una cambiando un único factor:
-
-| Variante              | Factor aislado                                                        |
-| --------------------- | --------------------------------------------------------------------- |
-| `oversampling_normal` | `NORMAL` se equipara con `PNEUMONIA` solo en `train` (1 073 → 3 100; total 6 200) |
-| `class_weight`        | Pesos `balanced` solo en `fit` (`NORMAL≈1.9445`, `PNEUMONIA≈0.6731`) |
-| `finetune_block16`    | Se entrenan las capas de `block_16_expand` (15 de 158)               |
-| `finetune_block13`    | Se entrenan las capas de `block_13_expand` (42 de 158)               |
-| `finetune_block10`    | Se entrenan las capas de `block_10_expand` (68 de 158)               |
-
-El oversampling se aplica únicamente a `train`: ni `validation` ni `test` se duplican. El
-oversampling siempre equipara `NORMAL` con `PNEUMONIA`; el proyecto no implementa factores de
-proporción configurables.
-
-**Reglas de decisión:**
-
-1. El test inicial se mide antes de decidir, para tener contraste con la auditoría de sensibilidad.
-2. La comparación entre variantes es **solo sobre `validation`**, con el criterio jerárquico
-   Balanced Accuracy > ROC-AUC > F1 > Accuracy.
-3. No hay tolerancias adicionales: el recall se reporta como información, pero no filtra
-   candidatos.
-4. El test final se ejecuta **una sola vez**, sobre el modelo ya elegido por `validation`.
-
-Al terminar se generan `models/optimization_results.json` (con el test inicial, las métricas de
-`validation` de cada variante, la decisión y el test final) y los checkpoints en
-`models/mobilenetv2_optimizacion/`.
-
-> **Reproducibilidad.** El pipeline es determinista: `src/utils/reproducibility.py` fija
-> `SEMILLA = 42`, activa `tf.config.experimental.enable_op_determinism()`, siembra cada `shuffle` y
-> las capas `RandomRotation` / `RandomZoom`, usa `map(..., deterministic=True)` y reinicia la
-> semilla antes de construir el pipeline de cada variante, de modo que las cinco ven los mismos
-> datos. Verificado: dos procesos independientes dan lotes de entrenamiento idénticos byte a byte.
-> Para consultar un resultado concreto sin volver a entrenar, lea
-> `models/optimization_results.json`; para repetir solo la optimización, use
-> `neumonia optimizar --reusar`.
->
-> Las dos ejecuciones anteriores de esta etapa se hicieron **sin** ese control y no son
-> reproducibles; están archivadas en `models/historico/` y en
-> `experiments/optimizacion_pendiente_mobilenetv2/`.
-
-### 11.4 Experimentación histórica (fuera del flujo vigente)
-
-La experimentación anterior se hizo sobre el ajuste `lr=3e-4` y ya no se expone en la CLI. Se
-reproduce desde los guiones de `experiments/`:
+## 9. Resumen de artefactos
 
 ```text
-experiments/optimizacion_pendiente_mobilenetv2/run_optimizacion.py
+models/sensitivity_results.json                 # 21 corridas de sensibilidad
+experiments/sensibilidad_hiperparametros/       # script del barrido + INFORME_SENSIBILIDAD.md
+
+results/final/combinado_validacion.json         # COMBINADO medido en validation
+results/final/combinado_validacion.csv
+results/final/validacion_y_true.npy             # probabilidades de validation (no versionado)
+results/final/validacion_y_prob.npy
+results/final/combinado/best_model.keras        # checkpoint de la etapa 5 (no versionado)
+results/final/umbral_decision.json              # 91 umbrales, elegido 0.38
+results/final/decision_modelo.json              # estrategia + config + umbral congelados
+results/final/final_model/best_model.keras      # modelo definitivo (no versionado)
+results/final/final_model_training.json
+results/final/final_test_report.json            # informe del test final
+results/final/final_test_metrics.csv            # métricas del test en CSV
+results/final/confusion_matrix_test_final.png   # matriz de confusión
+results/final/roc_curve_test_final.png           # curva ROC
+results/final/test_y_true.npy                   # probabilidades del test (no versionado)
+results/final/test_y_prob.npy
+reports/figures/                                # figuras de EDA y augmentación
 ```
 
-Sus artefactos (`models/mobilenetv2_tuning_results.json`,
-`models/mobilenetv2_desbalance_results.json` y los checkpoints asociados) se conservan para
-consultar resultados anteriores, pero el flujo vigente no los utiliza.
+Los `.keras` y los `.npy` están excluidos de git por tamaño; los JSON, CSV y PNG sí se versionan.
 
-## 12. Evaluación
+---
 
-La evaluación está integrada en el comando anterior. Cada modelo se evalúa primero sobre el subconjunto `validation` (1.043 imágenes), se aplica umbral 0.5 sobre las probabilidades y se calculan métricas. Se generan:
+## 10. Errores frecuentes
 
-- `reports/figures/confusion_matrix_validation_vgg16.png`;
-- `reports/figures/confusion_matrix_validation_resnet50.png`;
-- `reports/figures/confusion_matrix_validation_mobilenetv2.png`;
-- `reports/figures/roc_curve_validation_vgg16.png`;
-- `reports/figures/roc_curve_validation_resnet50.png`;
-- `reports/figures/roc_curve_validation_mobilenetv2.png`.
+| Síntoma | Causa | Solución |
+|---|---|---|
+| `KeyError: 'learning_rate'` en el log | Lectura de la configuración anidada incorrectamente | Corregido: la configuración se lee de `configuracion["config"]` de cada entrada. |
+| `KeyError: 'val'` | La comparación solo construía el pipeline de `train` | Corregido en la etapa de COMBINADO, que sí usa `train` para entrenar y `val` para medir. |
+| `NameError: name 'fig' is not defined` | `guardar_curva_roc` usaba una figura sin ejes | Corregido con `fig, ax = plt.subplots(...)`. |
+| `IndexError: list index out of range` | `plt.figure()` no garantiza ejes | Corregido: siempre se usan `subplots`. |
+| `No existe .../decision_modelo.json` en `neumonia test` | Faltan las etapas previas | Ejecute `neumonia umbral` antes de `neumonia final` y `neumonia test`. |
+| `El manifiesto declara N filas de test; se esperaban 624` | El manifiesto cambió | No se evalúa un test que no sea el original: regenere el manifiesto con `neumonia prepare`. |
+| Falta el dataset | DVC no restaurado | `dvc pull data/raw/chest_xray.dvc` |
+| OOM o lentitud extrema | Batch 16 con imágenes 224×224 en CPU | Es el comportamiento esperado; ver tiempos en las secciones 4 a 7. |
 
-> **Aviso: qué arquitectura representa cada figura de `validation` con nombre simple.** Las cuatro
-> figuras de VGG16 y ResNet50 se regeneraron para mostrar la **mejor configuración por
-> arquitectura** de la etapa de sensibilidad (`lr=1e-3`, dropout `0.3`, 3 épocas), no los resultados
-> del flujo base:
->
-> | Figura | Representa | TN | FP | FN | TP | BA | ROC-AUC |
-> |---|---|---:|---:|---:|---:|---:|---:|
-> | `confusion_matrix_validation_vgg16.png` | sensibilidad VGG16 | 260 | 8 | 70 | 705 | 0.9399 | 0.9850 |
-> | `confusion_matrix_validation_resnet50.png` | sensibilidad ResNet50 | 150 | 118 | 67 | 708 | 0.7366 | 0.8931 |
-> | `confusion_matrix_validation_mobilenetv2.png` | flujo base | 251 | 17 | 42 | 733 | 0.9412 | 0.9887 |
->
-> Las dos primeras **no** coinciden con `models/model_results.json` → `models.VGG16.validation` y
-> `models.ResNet50.validation`, que siguen declarando los valores del flujo base (VGG16 216/52/41/734,
-> BA 0.8765; ResNet50 0/268/0/775, BA 0.5000). Los campos `confusion_plot` y `roc_plot` de esos dos
-> bloques apuntan a las rutas de arriba, así que abrir la figura no reproduce la matriz declarada en
-> el JSON. Las tablas de `validation` de la sección 7 y del README describen el flujo base, que
-> sigue siendo el dato de esa sección; el cambio afecta solo a las imágenes. Para el ganador de
-> sensibilidad de MobileNetV2, usar las figuras `-sensibilidad` de la sección 11.2, no la de nombre
-> simple.
+---
 
-El conjunto `test` original (624 imágenes) queda reservado íntegro. En el flujo base se evalúa solo el modelo ganador al final, lo que genera:
+## 11. Advertencia sobre el tiempo de cómputo
 
-- `reports/figures/confusion_matrix_test_<modelo_ganador>.png`;
-- `reports/figures/roc_curve_test_<modelo_ganador>.png`.
+Las etapas de entrenamiento se validaron **en CPU**:
 
-En el flujo vigente ese mismo conjunto se evalúa dos veces, y el código guarda figuras en esos dos puntos concretos:
+| Etapa | Tiempo |
+|---|---|
+| 21 corridas de sensibilidad | completadas previamente (cerrada, no repetir) |
+| COMBINADO sobre train (3 épocas) | 445 s |
+| Modelo definitivo sobre train + val (3 épocas) | 487 s |
+| Búsqueda de umbral | segundos |
+| Evaluación del test | ~20 s (solo inferencia) |
 
-- Test inicial del ganador de la sensibilidad: `confusion_matrix_test_mobilenetv2-sensibilidad.png` y `roc_curve_test_mobilenetv2-sensibilidad.png`.
-- Test final del modelo elegido: `confusion_matrix_test_mobilenetv2-<ganador>.png` y `roc_curve_test_mobilenetv2-<ganador>.png`, que en la ejecución actual son los de `oversampling_normal`.
-
-Las variantes que no ganan no se evalúan sobre `test`, así que no tienen figura de test. Los archivos `confusion_matrix_test_mobilenetv2-ajustado.png` y `-oversampling.png` corresponden a las ejecuciones históricas, no al flujo vigente. El material de `finetune_block16` es de `validation` (`confusion_matrix_validation_mobilenetv2-finetune_block16.png` y `roc_curve_validation_mobilenetv2-finetune_block16.png`, TN 126, FP 142, FN 1, TP 774): la variante no ganó, nunca se evaluó sobre `test` y el nombre del archivo así lo indica. Ambas evaluaciones son mediciones: ninguna interviene en la selección.
-
-## 13. Comparación y criterio de éxito
-
-La comparación también está integrada en `run_real_training.py` y se realiza únicamente sobre las métricas de `validation`; el conjunto `test` no participa en la selección. El código utiliza este orden:
-
-1. Balanced Accuracy;
-2. ROC-AUC;
-3. F1;
-4. Accuracy.
-
-Sobre el `test` original se calcula además:
-
-- `baseline_test`: baseline de clase mayoritaria (predecir siempre `PNEUMONIA`).
-- `criterio_exito`: el modelo ganador debe superar al baseline en Balanced Accuracy y mostrar sensibilidad y especificidad por encima del nivel de azar (0.5), lo que indica un equilibrio adecuado entre ambas clases.
-
-Todo se persiste en `models/model_results.json`.
-
-> La sensibilidad (sección 11.2) y la optimización del desbalance (sección 11.3) reutilizan el mismo criterio jerárquico, pero persisten sus propios resultados en `models/sensitivity_results.json` y `models/optimization_results.json`; `models/model_results.json` conserva intactos los resultados del flujo base. El tuning y el desbalance anteriores son históricos y viven en `models/mobilenetv2_tuning_results.json` y `models/mobilenetv2_desbalance_results.json`.
-
-## 14. Consultar el modelo seleccionado
-
-Para consultar el ganador del flujo base guardado sin entrenar:
-
-```powershell
-$result = Get-Content -Raw models/model_results.json | ConvertFrom-Json
-$result.validation_comparison.winner.model_name
-$result.validation_comparison.results | Format-Table model_name, balanced_accuracy, accuracy, recall, specificity, f1, roc_auc
-$result.baseline_test | Format-List
-$result.criterio_exito | Format-List
-$result.final_test | Format-List model_name, accuracy, balanced_accuracy, precision, recall, specificity, f1, roc_auc
-```
-
-El bloque `validation_comparison.winner` es el modelo seleccionado únicamente con métricas de `validation`. El bloque `final_test` contiene las métricas del ganador del flujo base sobre el `test` original de 624 imágenes. Es la única evaluación de `test` de **esa** etapa; en el flujo vigente el mismo conjunto se mide dos veces, como `test_inicial` y `test_final`, y en ningún caso decide.
-
-Para consultar la selección y los test del flujo vigente (sensibilidad, test inicial,
-optimización y test final):
-
-```powershell
-$opt = Get-Content -Raw models/optimization_results.json | ConvertFrom-Json
-$opt.punto_de_partida | Format-List model_name, config_id
-$opt.criterio_seleccion
-$opt.test_utilizado_para_seleccion
-$opt.test_inicial.test    | Format-List balanced_accuracy, accuracy, precision, recall, specificity, f1, roc_auc
-$opt.seleccion.tabla_ordenada | Format-Table id, grupo, balanced_accuracy, roc_auc, f1, accuracy
-$opt.seleccion           | Format-List ganador_id, ganador_grupo, ganador_checkpoint, supera_punto_de_partida
-$opt.test_final.test     | Format-List balanced_accuracy, accuracy, precision, recall, specificity, f1, roc_auc
-$opt.test_final.test.confusion_matrix
-```
-
-Cada elemento de `resultados` guarda sus métricas de `validation` anidadas bajo la propiedad
-`validation`, así que `Format-Table id, balanced_accuracy, ...` sobre `resultados` mostraría columnas
-vacías. Para la tabla plana y ya ordenada por el criterio, usar
-`seleccion.tabla_ordenada`; para el detalle de cada variante,
-`$opt.resultados | Format-List id, grupo, checkpoint, validation`.
-
-El bloque `test_inicial` es la medición sobre `test` del punto de partida, anterior a decidir.
-El bloque `resultados` solo contiene métricas de `validation`. El bloque `seleccion` documenta
-el ganador según el criterio jerárquico de cuatro métricas, cuyo orden declara
-`criterio_seleccion`, y deja constancia explícita en `test_utilizado_para_seleccion` de que el test
-no intervino. El bloque `test_final` es la única evaluación del modelo elegido, ejecutada una sola
-vez. El bloque `reproducibilidad` registra cómo se fijaron las semillas.
-
-Para consultar los resultados históricos (fuera del flujo vigente):
-
-```powershell
-$desb = Get-Content -Raw models/mobilenetv2_desbalance_results.json | ConvertFrom-Json
-$desb.tabla_seleccion | Format-Table experimento, balanced_accuracy, accuracy, recall, specificity, f1, roc_auc
-$tun = Get-Content -Raw models/mobilenetv2_tuning_results.json | ConvertFrom-Json
-$tun.tabla_ordenada | Format-Table experimento, balanced_accuracy, accuracy, recall, specificity, f1, roc_auc
-```
-
-## 15. Ejecutar los tests
-
-```powershell
-.\.venv\Scripts\python.exe -m pytest
-```
-
-La suite actual contiene 73 pruebas. Incluye verificaciones de la nueva división (test original
-intacto, estratificación, ausencia de duplicados por hash entre conjuntos, no mezcla del test con
-train/validation, ausencia de `RandomFlip("horizontal")` en la augmentation), la idempotencia de
-la etapa de sensibilidad, el aislamiento del `test` en la optimización (criterio jerárquico de
-cuatro métricas, desempate por ROC-AUC, F1 y Accuracy, `test` fuera de toda decisión, variantes que
-no repiten los 21 factores ya evaluados y que cada una aísla un solo factor) y, en
-`tests/test_reproducibilidad.py`, el control de semillas: `shuffle` y augmentation sembrados,
-`deterministic=True`, igualdad de lotes entre pipelines construidos por separado, reproducibilidad
-del oversampling, igualdad de pesos iniciales y orden `clear_session()` → `reiniciar_semilla()` →
-pipeline → modelo. No hay ninguna prueba que exija paralelismo en el entrenamiento de las variantes.
-
-## 16. Ubicación de artefactos
-
-- Modelos del flujo base: `models/vgg16/best_model.keras`, `models/resnet50/best_model.keras` y `models/mobilenetv2/best_model.keras`.
-- Checkpoints de las 5 variantes de optimización: `models/mobilenetv2_optimizacion/<variante>/best_model.keras`.
-- Checkpoints de los 21 entrenamientos de sensibilidad (7 configuraciones × 3 arquitecturas): `experiments/sensibilidad_hiperparametros/checkpoints/`.
-- Resultados de la selección de arquitectura: `models/model_results.json`.
-- Resultados de la sensibilidad: `models/sensitivity_results.json` y `experiments/sensibilidad_hiperparametros/resultados/sensibilidad_resultados.json`.
-- Auditoría del test del ganador de sensibilidad: `models/sensitivity_test_audit.json`.
-- **Resultados del flujo vigente (test inicial, validation, selección y test final): `models/optimization_results.json`.**
-- Resultados históricos: `models/mobilenetv2_tuning_results.json` y `models/mobilenetv2_desbalance_results.json`.
-- Ejecuciones anteriores no reproducibles de la optimización: `models/historico/` y `experiments/optimizacion_pendiente_mobilenetv2/`.
-- Manifiesto del reparto experimental: `data/interim/stratified_split_train80_val20_test_original.csv`.
-- Figuras EDA, evaluación, augmentación y test: `reports/figures/`.
-- Código de datos: `src/data/`.
-- Código de modelos: `src/models/`.
-- Código de entrenamiento: `src/training/` (`run_real_training.py`, `sensitivity.py`, `optimizacion_mobilenetv2.py`, `tuning_mobilenetv2.py`, `tuning_desbalance_clases.py`).
-- Control de semillas: `src/utils/reproducibility.py`.
-- Código de visualización: `src/visualization/`.
-- Tests: `tests/`.
-
-## 17. Solución de problemas comunes
-
-### No se encuentra `dvc`
-
-Instalar DVC con soporte para el remoto configurado:
-
-```powershell
-.\.venv\Scripts\python.exe -m pip install "dvc[gdrive]"
-```
-
-Después comprobar:
-
-```powershell
-dvc remote list
-```
-
-### No existe `data/raw/chest_xray`
-
-Ejecutar:
-
-```powershell
-dvc pull data/raw/chest_xray.dvc
-```
-
-Verificar que el archivo `.dvc` y el remoto sean accesibles.
-
-### TensorFlow no está disponible
-
-Comprobar el entorno activo y reinstalar las dependencias:
-
-```powershell
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
-.\.venv\Scripts\python.exe -c "import tensorflow as tf; print(tf.__version__)"
-```
-
-### El entrenamiento tarda demasiado
-
-El script entrena tres modelos y ejecuta tres epochs sobre CPU si no hay GPU configurada. Es un comportamiento esperado. No interrumpir una ejecución si se necesitan los tres resultados finales.
-
-### Se desea consultar resultados sin reentrenar
-
-No ejecutar `run_real_training.py`. Usar `neumonia evaluate` para consultar los resultados guardados, o leer `models/model_results.json` y revisar las figuras y los checkpoints ya existentes.
-
-### Falla `make requirements`
-
-El Makefile conserva reglas heredadas del template original y no es el entry point recomendado para este pipeline. Utilizar directamente los comandos de esta guía con el intérprete de `.venv`.
+Para reejecutar el flujo completo desde cero, contar con un par de horas de cómputo. No es necesario
+para consultar resultados: use `neumonia evaluar`.
