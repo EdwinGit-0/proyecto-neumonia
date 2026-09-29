@@ -1,0 +1,132 @@
+{
+  "descripcion": "Entrenamiento de MobileNetV2 con la estrategia unica COMBINADO (oversampling 50/50 + class weights) sobre train, medido exclusivamente sobre validation. Validation no recibe oversampling ni class weights.",
+  "etapa": "combinado",
+  "estrategia": {
+    "id": "combinado",
+    "descripcion": "Oversampling 50/50 de la minoritaria NORMAL en train (muestreo con reemplazo) mas class weights balanceados calculados sobre la distribucion original de train. El tratamiento se aplica solo a los splits de entrenamiento; validation y test conservan su distribucion y nunca se reponderan.",
+    "oversampling": true,
+    "class_weight": true,
+    "class_weights_sobre": "distribucion_original_pre_oversampling",
+    "proporcion_objetivo": "50/50"
+  },
+  "model_name": "MobileNetV2",
+  "config": {
+    "learning_rate": 0.001,
+    "dropout": 0.3,
+    "epochs": 3
+  },
+  "config_origen": "etapa de sensibilidad (sin nueva busqueda de hiperparametros)",
+  "split_manifest": "D:\\CIENCIA_DATOS\\Modulo_6\\Code\\proyecto-neumonia\\data\\interim\\stratified_split_train80_val20_test_original.csv",
+  "seed": 42,
+  "batch_size": 16,
+  "tamano_imagen": [
+    224,
+    224
+  ],
+  "umbral_medicion": 0.5,
+  "splits_entrenamiento": [
+    "train"
+  ],
+  "splits_medicion": [
+    "val"
+  ],
+  "diagnostico_combinado": {
+    "estrategia": "combinado",
+    "splits": [
+      "train"
+    ],
+    "composicion_original": {
+      "NORMAL": 1073,
+      "PNEUMONIA": 3100,
+      "total": 4173
+    },
+    "composicion_tras_oversampling": {
+      "NORMAL": 3100,
+      "PNEUMONIA": 3100,
+      "total": 6200
+    },
+    "filas_duplicadas": 2027,
+    "class_weight": {
+      "0": 1.9445479962721341,
+      "1": 0.6730645161290323
+    },
+    "class_weight_calculado_sobre": "distribucion_original_pre_oversampling",
+    "razon_muestreo_tras_oversampling": 1.0,
+    "razon_pesos_por_clase": 2.8890959925442683,
+    "refuerzo_total_minoritaria": 2.8890959925442683,
+    "advertencia_doble_correccion": "El oversampling iguala la frecuencia (razon 1.00) y los class_weights anaden una razon de 2.89, de modo que NORMAL recibe un refuerzo total de 2.89x frente a PNEUMONIA. COMBINADO no solo corrige el desbalance: lo invierte parcialmente. Los class_weight NO se aplican a validation ni a test.",
+    "filas_efectivas_entrenamiento": 6200,
+    "detalle_oversampling": {
+      "clase_minoritaria": "NORMAL",
+      "NORMAL_original": 1073,
+      "PNEUMONIA_original": 3100,
+      "NORMAL_oversampled": 3100,
+      "PNEUMONIA_oversampled": 3100,
+      "total_original": 4173,
+      "total_oversampled": 6200,
+      "duplicadas": 2027
+    }
+  },
+  "class_weight_aplicado": {
+    "0": 1.9445479962721341,
+    "1": 0.6730645161290323
+  },
+  "class_weight_aplicado_solo_a": "funcion de perdida del entrenamiento",
+  "validation_composicion": {
+    "NORMAL": 268,
+    "PNEUMONIA": 775,
+    "total": 1043
+  },
+  "validation": {
+    "accuracy": 0.9453499520613614,
+    "precision": 0.9986111111111111,
+    "recall": 0.927741935483871,
+    "specificity": 0.996268656716418,
+    "balanced_accuracy": 0.9620052961001444,
+    "f1": 0.9618729096989966,
+    "roc_auc": 0.9941068849301878
+  },
+  "validation_matriz_confusion": {
+    "tn": 267,
+    "fp": 1,
+    "fn": 56,
+    "tp": 719
+  },
+  "validation_n": 1043,
+  "segundos_entrenamiento": 478.04855155944824,
+  "epochs_ejecutadas": 3,
+  "early_stopping": false,
+  "historial": {
+    "loss": [
+      0.18372304737567902,
+      0.1302914321422577,
+      0.11186810582876205
+    ],
+    "accuracy": [
+      0.9233871102333069,
+      0.9474193453788757,
+      0.9559677243232727
+    ],
+    "val_loss": [
+      0.20173682272434235,
+      0.15252840518951416,
+      0.15674856305122375
+    ],
+    "val_accuracy": [
+      0.9223393797874451,
+      0.9424736499786377,
+      0.945349931716919
+    ],
+    "lr": [
+      0.0010000000474974513,
+      0.0010000000474974513,
+      0.0010000000474974513
+    ]
+  },
+  "figuras": {
+    "matriz_confusion": "D:\\CIENCIA_DATOS\\Modulo_6\\Code\\proyecto-neumonia\\reports\\figures\\validation_combinado_mobilenetv2_confusion_matrix.png",
+    "curva_roc": "D:\\CIENCIA_DATOS\\Modulo_6\\Code\\proyecto-neumonia\\reports\\figures\\validation_combinado_mobilenetv2_roc_curve.png"
+  },
+  "test_utilizado": false,
+  "finalizado": "2026-09-28T22:32:05.634138+00:00"
+}

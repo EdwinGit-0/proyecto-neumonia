@@ -256,6 +256,17 @@ def test_la_decision_congela_estrategia_configuracion_y_umbral(
     monkeypatch.setattr(flujo_final, "RUTA_UMBRAL", tmp_path / "umbral.json")
     monkeypatch.setattr(flujo_final, "RUTA_DECISION", tmp_path / "decision.json")
 
+    # ajustar_umbral() grafica con la ruta por defecto (reports/figures); se redirige a tmp_path
+    # para que el test no sobrescriba la figura real del proyecto.
+    graficar_real = flujo_final.graficar_seleccion_umbral
+    monkeypatch.setattr(
+        flujo_final,
+        "graficar_seleccion_umbral",
+        lambda curva, umbral_elegido: graficar_real(
+            curva, umbral_elegido, ruta_salida=tmp_path / flujo_final.FIGURA_UMBRAL
+        ),
+    )
+
     flujo_final.guardar_json(_combinado_falso(), flujo_final.RUTA_COMBINADO)
     y_true = np.array([0] * 268 + [1] * 775)
     y_prob = np.concatenate([np.linspace(0.0, 0.5, 268), np.linspace(0.5, 1.0, 775)])

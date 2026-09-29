@@ -32,24 +32,28 @@ La forma abreviada `neumonia <comando>` requiere que el paquete esté instalado 
 
 ---
 
-## 2. Orden de ejecución
+## 2. Orden de ejecución (nuevo flujo)
 
 ```powershell
-neumonia eda            # 1. Análisis exploratorio
-neumonia prepare        # 2. Manifiesto estratificado 80/20
-neumonia augment        # 3. Figura de ejemplos de augmentación
-neumonia sensibilidad   # 4. 21 entrenamientos (cerrada, no repetir)
-neumonia combinado       # 5. COMBINADO sobre train, medido en validation
-neumonia umbral         # 6. Congela el umbral de decisión
-neumonia final          # 7. Reentrena el definitivo sobre train + val
-   neumonia test           # 8. Evaluación del test original con el umbral congelado
-   neumonia evaluar        # 9. Consulta de resultados
+neumonia eda                    # 1. Análisis exploratorio
+neumonia prepare                # 2. Manifiesto estratificado 80/20
+neumonia augment                # 3. Figura de ejemplos de augmentación
+neumonia sensibilidad           # 4. 21 entrenamientos (cerrada, no repetir)
+neumonia combinado-arquitecturas # 5. COMBINADO para VGG16, ResNet50, MobileNetV2
+neumonia comparar               # 6. Compara y selecciona la mejor arquitectura
+neumonia umbral                 # 7. Congela el umbral de decisión (0.38)
+neumonia final                  # 8. Reentrena el definitivo sobre train + val
+neumonia test                   # 9. Evaluación del test original con el umbral congelado
+neumonia evaluar                # 10. Consulta de resultados
 ```
 
-`neumonia run` encadena las nueve etapas, incluida la evaluación del test, y cierra con la suite de
+`neumonia run` encadena las diez etapas, incluida la evaluación del test, y cierra con la suite de
 pruebas.
 
----
+### Flujo original (compatibilidad)
+
+Los comandos `neumonia combinado`, `neumonia umbral`, `neumonia final`, `neumonia test` siguen
+disponibles para el flujo original de una sola arquitectura (MobileNetV2).
 
 ## 3. Etapas 1 a 3: preparación
 
@@ -137,16 +141,17 @@ Equivalente desde el experimento, si se quiere regenerar el informe:
 
 ---
 
-## 5. Etapa 5: entrenamiento con la estrategia única COMBINADO
+## 5. Etapa 5: COMBINADO para 3 arquitecturas (nuevo flujo)
 
 ```powershell
-neumonia combinado
+neumonia combinado-arquitecturas
 ```
 
-Lee la mejor configuración por arquitectura de la sensibilidad y entrena **una sola** corrida:
-MobileNetV2 con COMBINADO, medido en `validation`. Para rehacerla: `neumonia combinado --recalcular`.
+Lee los hiperparámetros fijados por la sensibilidad (lr=1e-3, dropout=0.3, epochs=3) y entrena **tres**
+corridas COMBINADO: una por arquitectura (VGG16, ResNet50, MobileNetV2), medida en `validation`.
+Para rehacerla: `neumonia combinado-arquitecturas --recalcular`.
 
-### 5.1 Qué hace COMBINADO
+### 5.1 Qué hace COMBINADO (idéntico para las 3 arquitecturas)
 
 | Paso | Detalle |
 |---|---|
@@ -164,37 +169,43 @@ equilibrado, no se anulan entre sí: el refuerzo total de `NORMAL` frente a `PNE
 **2.89x** (1.00 por el oversampling × 2.89 por los pesos). Es decir, COMBINADO no solo corrige el
 desbalance, lo invierte parcialmente en el entrenamiento.
 
-Esto está registrado en `diagnostico_combinado.advertencia_doble_correccion` dentro de
-`results/final/combinado_validacion.json`. Si en el futuro se quisieran pesos que no inviertan el
-balance, habría que fijarlos a 1.0 y quedarse solo con el oversampling; eso ya no es COMBINADO.
+Esto está registrado en `diagnostico_combinado.advertencia_doble_correccion` dentro de cada
+`results/final/combinado_*_validacion.json`.
 
-### 5.3 Resultado en validation (umbral 0.5)
+### 5.3 Resultados en validation (umbral 0.5)
 
-| Métrica | Valor |
-|---|---:|
-| Balanced Accuracy | 0.9549 |
-| Recall | 0.9135 |
-| Specificity | 0.9963 |
-| Precision | 0.9986 |
-| F1 | 0.9542 |
-| ROC-AUC | 0.9939 |
-| Accuracy | 0.9348 |
-| Matriz de confusión | TN 267 / FP 1 / FN 67 / TP 708 |
+| Arquitectura | Balanced Acc | ROC-AUC | F1 | Accuracy | Precision | Recall | Specificity | Matriz (TN/FP/FN/TP) |
+|---|---:|---:|---:|---:|---:|---:|---:|---|
+| MobileNetV2 | 0.9620 | 0.9941 | 0.9619 | 0.9453 | 0.9986 | 0.9277 | 0.9963 | 267/1/56/719 |
+| VGG16 | 0.8904 | 0.9878 | 0.8786 | 0.8389 | 0.9984 | 0.7845 | 0.9963 | 267/1/167/608 |
+| ResNet50 | 0.7595 | 0.9002 | 0.6886 | 0.6462 | 0.9951 | 0.5265 | 0.9925 | 266/2/367/408 |
 
-Artefactos:
+Artefactos (uno por arquitectura):
 
 ```text
-results/final/combinado_validacion.json    # métricas, diagnóstico y pesos
-results/final/combinado_validacion.csv     # tabla de una fila
-results/final/validacion_y_{true,prob}.npy # probabilidades para el umbral
-results/final/combinado/best_model.keras   # checkpoint de esta etapa
+results/final/combinado_vgg16_validacion.json
+results/final/combinado_resnet50_validacion.json
+results/final/combinado_mobilenetv2_validacion.json
+results/final/combinado_vgg16_validacion.csv
+results/final/combinado_resnet50_validacion.csv
+results/final/combinado_mobilenetv2_validacion.csv
+results/final/validacion_vgg16_y_{true,prob}.npy
+results/final/validacion_resnet50_y_{true,prob}.npy
+results/final/validacion_mobilenetv2_y_{true,prob}.npy
+results/final/combinado/vgg16/best_model.keras
+results/final/combinado/resnet50/best_model.keras
+results/final/combinado/mobilenetv2/best_model.keras
 ```
 
 Figuras en `reports/figures/`:
 
 ```text
-validation_combinado_confusion_matrix.png
-validation_combinado_roc_curve.png
+validation_combinado_vgg16_confusion_matrix.png
+validation_combinado_vgg16_roc_curve.png
+validation_combinado_resnet50_confusion_matrix.png
+validation_combinado_resnet50_roc_curve.png
+validation_combinado_mobilenetv2_confusion_matrix.png
+validation_combinado_mobilenetv2_roc_curve.png
 ```
 
 ### 5.4 Alcance de COMBINADO
@@ -207,7 +218,39 @@ su distribución original y nunca se reponderan.
 
 ---
 
-## 6. Etapas 6 a 7: umbral y modelo definitivo
+## 6. Etapa 6: Comparación de arquitecturas y selección (nuevo flujo)
+
+```powershell
+neumonia comparar
+```
+
+Carga los 3 resultados COMBINADO, compara las arquitecturas usando el criterio jerárquico
+(Balanced Accuracy > ROC-AUC > F1 > Accuracy) sobre validation y selecciona la mejor.
+
+Resultados de la ejecución validada:
+
+| Pos | Arquitectura | Balanced Acc | ROC-AUC | F1 | Accuracy |
+|---|---|---:|---:|---:|---:|
+| 1 | **MobileNetV2** | 0.9620 | 0.9941 | 0.9619 | 0.9453 |
+| 2 | VGG16 | 0.8904 | 0.9878 | 0.8786 | 0.8389 |
+| 3 | ResNet50 | 0.7595 | 0.9002 | 0.6886 | 0.6462 |
+
+**Arquitectura seleccionada: MobileNetV2**
+
+Copia los resultados de MobileNetV2 a los archivos estándar del flujo
+(`results/final/combinado_validacion.json`, `validacion_y_{true,prob}.npy`, etc.) para que las
+etapas siguientes (umbral, final, test) funcionen sin cambios.
+
+Artefactos:
+
+```text
+results/final/comparacion_arquitecturas.json    # tabla completa y ganador
+results/final/seleccion_arquitectura.json       # arquitectura seleccionada
+```
+
+---
+
+## 7. Etapas 7 a 8: umbral y modelo definitivo
 
 ### 6.1 Umbral de decisión
 
@@ -279,21 +322,20 @@ punto de corte ya están cerrados cuando el test se lee.
 
 ### Resultados de la corrida
 
-| Métrica (umbral congelado) | Valor |
-|---|---:|
-| Accuracy | 0.9119 |
-| Precision | 0.9328 |
-| Recall | 0.9256 |
-| Specificity | 0.8889 |
-| F1 | 0.9292 |
-| Balanced Accuracy | 0.9073 |
-| ROC-AUC | 0.9728 |
+| Métrica (umbral congelado 0.38) | Valor | Referencia (umbral 0.5) |
+|---|---:|---:|
+| **Balanced Accuracy** | **0.8996** | 0.8936 |
+| Accuracy | 0.8990 | 0.8862 |
+| Precision | 0.9383 | 0.9493 |
+| Recall | 0.8974 | 0.8641 |
+| Specificity | 0.9017 | 0.9231 |
+| F1 | 0.9174 | 0.9047 |
+| ROC-AUC | 0.9694 | 0.9694 |
 
-Matriz de confusión: **TN 208 / FP 26 / FN 29 / TP 361**.
+Matriz de confusión: **TN 211 / FP 23 / FN 40 / TP 350**.
 
-Con el umbral por defecto de 0.5, sobre las mismas probabilidades: accuracy 0.9006, precision
-0.9432, recall 0.8949, specificity 0.9103, balanced accuracy 0.9026, F1 0.9184. El umbral elegido
-compensa su mayor recall a costa de algo de specificity, y mejora el balanced accuracy.
+El criterio de éxito se cumple: supera el baseline de Balanced Accuracy (0.5000), recall 0.8974 > 0.5
+y specificity 0.9017 > 0.5.
 
 ---
 
@@ -343,25 +385,45 @@ Las pruebas verifican, entre otras cosas:
 ## 9. Resumen de artefactos
 
 ```text
-models/sensitivity_results.json                 # 21 corridas de sensibilidad
+models/sensitivity_results.json                 # 21 corridas de sensibilidad (cerradas)
 experiments/sensibilidad_hiperparametros/       # script del barrido + INFORME_SENSIBILIDAD.md
 
-results/final/combinado_validacion.json         # COMBINADO medido en validation
+# COMBINADO por arquitectura (etapa 5)
+results/final/combinado_vgg16_validacion.json
+results/final/combinado_resnet50_validacion.json
+results/final/combinado_mobilenetv2_validacion.json
+results/final/combinado_vgg16_validacion.csv
+results/final/combinado_resnet50_validacion.csv
+results/final/combinado_mobilenetv2_validacion.csv
+results/final/validacion_vgg16_y_{true,prob}.npy
+results/final/validacion_resnet50_y_{true,prob}.npy
+results/final/validacion_mobilenetv2_y_{true,prob}.npy
+results/final/combinado/vgg16/best_model.keras
+results/final/combinado/resnet50/best_model.keras
+results/final/combinado/mobilenetv2/best_model.keras
+
+# Comparación y selección (etapa 6)
+results/final/comparacion_arquitecturas.json
+results/final/seleccion_arquitectura.json
+
+# Flujo estándar con arquitectura seleccionada (etapas 7-9)
+results/final/combinado_validacion.json         # copiado de la arquitectura seleccionada
 results/final/combinado_validacion.csv
-results/final/validacion_y_true.npy             # probabilidades de validation (no versionado)
-results/final/validacion_y_prob.npy
-results/final/combinado/best_model.keras        # checkpoint de la etapa 5 (no versionado)
+results/final/validacion_y_{true,prob}.npy      # copiados de la arquitectura seleccionada
 results/final/umbral_decision.json              # 91 umbrales, elegido 0.38
 results/final/decision_modelo.json              # estrategia + config + umbral congelados
 results/final/final_model/best_model.keras      # modelo definitivo (no versionado)
 results/final/final_model_training.json
 results/final/final_test_report.json            # informe del test final
 results/final/final_test_metrics.csv            # métricas del test en CSV
-results/final/confusion_matrix_test_final.png   # matriz de confusión
-results/final/roc_curve_test_final.png           # curva ROC
+results/final/test_final_confusion_matrix.png   # matriz de confusión test
+results/final/test_final_roc_curve.png           # curva ROC test
+results/final/test_final_metrics.png             # gráfico métricas test
 results/final/test_y_true.npy                   # probabilidades del test (no versionado)
 results/final/test_y_prob.npy
-reports/figures/                                # figuras de EDA y augmentación
+
+reports/figures/                                # figuras de EDA, augmentación, sensibilidad,
+                                                # combinado_arquitecturas (6), umbral, test
 ```
 
 Los `.keras` y los `.npy` están excluidos de git por tamaño; los JSON, CSV y PNG sí se versionan.
@@ -390,10 +452,12 @@ Las etapas de entrenamiento se validaron **en CPU**:
 | Etapa | Tiempo |
 |---|---|
 | 21 corridas de sensibilidad | completadas previamente (cerrada, no repetir) |
-| COMBINADO sobre train (3 épocas) | 445 s |
-| Modelo definitivo sobre train + val (3 épocas) | 487 s |
+| COMBINADO VGG16 (3 épocas) | ~1500 s |
+| COMBINADO ResNet50 (3 épocas) | ~1000 s |
+| COMBINADO MobileNetV2 (3 épocas) | ~500 s |
+| Modelo definitivo train + val (3 épocas) | ~510 s |
 | Búsqueda de umbral | segundos |
 | Evaluación del test | ~20 s (solo inferencia) |
 
-Para reejecutar el flujo completo desde cero, contar con un par de horas de cómputo. No es necesario
-para consultar resultados: use `neumonia evaluar`.
+Para reejecutar el flujo completo desde cero (3 arquitecturas + definitivo), contar con ~1 hora de
+cómputo en CPU. No es necesario para consultar resultados: use `neumonia evaluar`.

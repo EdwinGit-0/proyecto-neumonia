@@ -61,9 +61,9 @@
   "class_weight_aplicado_solo_a": "funcion de perdida del entrenamiento",
   "epochs": 3,
   "epochs_ejecutadas": 3,
-  "segundos_entrenamiento": 487.452933549881,
+  "segundos_entrenamiento": 510.42810106277466,
   "umbral": 0.38,
   "modelo": "D:\\CIENCIA_DATOS\\Modulo_6\\Code\\proyecto-neumonia\\results\\final\\final_model\\best_model.keras",
   "test_utilizado": false,
-  "finalizado": "2026-09-28T11:27:27.252844+00:00"
+  "finalizado": "2026-09-28T22:47:27.845868+00:00"
 }

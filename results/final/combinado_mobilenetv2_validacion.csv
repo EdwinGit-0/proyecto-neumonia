@@ -1,0 +1,2 @@
+split,umbral,model_name,accuracy,precision,recall,specificity,balanced_accuracy,f1,roc_auc,matriz_tn,matriz_fp,matriz_fn,matriz_tp
+validation,0.5,MobileNetV2,0.9453499520613614,0.9986111111111111,0.927741935483871,0.996268656716418,0.9620052961001444,0.9618729096989966,0.9941068849301878,267,1,56,719

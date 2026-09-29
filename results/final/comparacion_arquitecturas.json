@@ -1,0 +1,117 @@
+{
+  "descripcion": "Comparaci\u00f3n de VGG16, ResNet50 y MobileNetV2 con la estrategia COMBINADO sobre validation. Mismos datos, preprocessing, augmentation, hiperpar\u00e1metros (lr=0.001, dropout=0.3, epochs=3), misma estrategia de desbalance. La \u00fanica diferencia es la arquitectura.",
+  "criterio": [
+    "balanced_accuracy",
+    "roc_auc",
+    "f1",
+    "accuracy"
+  ],
+  "resultados": [
+    {
+      "model_name": "MobileNetV2",
+      "config": {
+        "learning_rate": 0.001,
+        "dropout": 0.3,
+        "epochs": 3
+      },
+      "origen": "combinado",
+      "accuracy": 0.9453499520613614,
+      "precision": 0.9986111111111111,
+      "recall": 0.927741935483871,
+      "specificity": 0.996268656716418,
+      "balanced_accuracy": 0.9620052961001444,
+      "f1": 0.9618729096989966,
+      "roc_auc": 0.9941068849301878,
+      "confusion_matrix": [
+        [
+          267,
+          1
+        ],
+        [
+          56,
+          719
+        ]
+      ]
+    },
+    {
+      "model_name": "VGG16",
+      "config": {
+        "learning_rate": 0.001,
+        "dropout": 0.3,
+        "epochs": 3
+      },
+      "origen": "combinado",
+      "accuracy": 0.8389261744966443,
+      "precision": 0.9983579638752053,
+      "recall": 0.7845161290322581,
+      "specificity": 0.996268656716418,
+      "balanced_accuracy": 0.890392392874338,
+      "f1": 0.8786127167630058,
+      "roc_auc": 0.9877611940298507,
+      "confusion_matrix": [
+        [
+          267,
+          1
+        ],
+        [
+          167,
+          608
+        ]
+      ]
+    },
+    {
+      "model_name": "ResNet50",
+      "config": {
+        "learning_rate": 0.001,
+        "dropout": 0.3,
+        "epochs": 3
+      },
+      "origen": "combinado",
+      "accuracy": 0.6462128475551294,
+      "precision": 0.9951219512195122,
+      "recall": 0.5264516129032258,
+      "specificity": 0.9925373134328358,
+      "balanced_accuracy": 0.7594944631680308,
+      "f1": 0.6886075949367089,
+      "roc_auc": 0.9002166586422725,
+      "confusion_matrix": [
+        [
+          266,
+          2
+        ],
+        [
+          367,
+          408
+        ]
+      ]
+    }
+  ],
+  "ganador": {
+    "model_name": "MobileNetV2",
+    "config": {
+      "learning_rate": 0.001,
+      "dropout": 0.3,
+      "epochs": 3
+    },
+    "origen": "combinado",
+    "accuracy": 0.9453499520613614,
+    "precision": 0.9986111111111111,
+    "recall": 0.927741935483871,
+    "specificity": 0.996268656716418,
+    "balanced_accuracy": 0.9620052961001444,
+    "f1": 0.9618729096989966,
+    "roc_auc": 0.9941068849301878,
+    "confusion_matrix": [
+      [
+        267,
+        1
+      ],
+      [
+        56,
+        719
+      ]
+    ]
+  },
+  "test_utilizado": false,
+  "finalizado": "2026-09-28T22:33:11.087490+00:00"
+}

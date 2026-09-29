@@ -2,21 +2,28 @@
 
 Comandos disponibles:
 
-    neumonia eda           Análisis exploratorio de datos
-    neumonia prepare       Manifiesto de división 80/20 con test original intacto
-    neumonia augment       Figura de ejemplos de augmentación
-    neumonia sensibilidad  Sensibilidad de hiperparámetros (21 corridas, sin test)
-    neumonia combinado     MobileNetV2 con la estrategia única COMBINADO (train -> val)
-    neumonia umbral        Umbral de decisión congelado sobre validación
-    neumonia final         Modelo definitivo reentrenado sobre train + val
-    neumonia test          Evaluación del test original con el umbral congelado
-    neumonia evaluar       Muestra los artefactos de la última corrida
-    neumonia test-suite    Suite de pruebas con pytest
-    neumonia run           Flujo completo, incluida la evaluación del test
+    neumonia eda                    Análisis exploratorio de datos
+    neumonia prepare                Manifiesto de división 80/20 con test original intacto
+    neumonia augment                Figura de ejemplos de augmentación
+    neumonia sensibilidad           Sensibilidad de hiperparámetros (21 corridas, sin test)
+    neumonia combinado_arquitecturas  COMBINADO para VGG16, ResNet50, MobileNetV2 (train -> val)
+    neumonia comparar               Comparar las 3 arquitecturas y seleccionar la mejor
+    neumonia combinado              MobileNetV2 con COMBINADO (flujo original, compatibilidad)
+    neumonia umbral                 Umbral de decisión congelado sobre validación
+    neumonia final                  Modelo definitivo reentrenado sobre train + val
+    neumonia test                   Evaluación del test original con el umbral congelado
+    neumonia evaluar                Muestra los artefactos de la última corrida
+    neumonia test-suite             Suite de pruebas con pytest
+    neumonia run                    Flujo completo nuevo (3 arquitecturas -> comparación -> test)
 
-El orden importa: ``combinado`` entrena la estrategia única del proyecto sobre train y
-mide en validation, ``umbral`` congela el umbral, ``final`` entrena sobre train + val y
-solo entonces ``test`` carga el test original con ese umbral ya congelado.
+El orden del flujo nuevo:
+  1. combinado_arquitecturas: entrena VGG16, ResNet50, MobileNetV2 con COMBINADO sobre train, mide en val
+  2. comparar: compara las 3 arquitecturas (Balanced Accuracy > ROC-AUC > F1 > Accuracy), selecciona la mejor
+  3. umbral: congela umbral usando validation de la arquitectura seleccionada
+  4. final: reentrena modelo definitivo sobre train+val
+  5. test: evalúa test original con umbral congelado
+
+El flujo original (combinado -> umbral -> final -> test) se mantiene para compatibilidad.
 """
 
 from __future__ import annotations
@@ -170,6 +177,99 @@ def sensibilidad(recalcular: bool) -> None:
 
     click.echo(f"Figura guardada en: {DIRECTORIO_FIGURAS / 'sensitivity_validation.png'}")
     click.echo("Analisis de sensibilidad completado.")
+
+
+@cli.command()
+@click.option(
+    "--recalcular",
+    is_flag=True,
+    help="Rehacer los 3 entrenamientos aunque ya existan sus artefactos.",
+)
+def combinado_arquitecturas(recalcular: bool) -> None:
+    """Ejecutar COMBINADO para VGG16, ResNet50 y MobileNetV2 (train -> validation).
+
+    Cada arquitectura usa los hiperparámetros fijados por la sensibilidad:
+    lr=0.001, dropout=0.3, epochs=3. Mismos datos, mismo preprocessing,
+    misma augmentation, misma estrategia de desbalance. Solo cambia la arquitectura.
+    """
+    from src.training.flujo_final import (
+        RUTA_COMBINADO_VGG16,
+        RUTA_COMBINADO_RESNET50,
+        RUTA_COMBINADO_MOBILENETV2,
+        ejecutar_combinado_arquitecturas,
+    )
+
+    click.echo("=== COMBINADO para 3 arquitecturas ===")
+    click.echo("Hiperparámetros fijos: lr=0.001, dropout=0.3, epochs=3")
+    click.echo("Estrategia: oversampling 50/50 + class weights (solo train)")
+    click.echo("Medición: validation intacta (sin oversampling ni class weights)")
+    click.echo("Advertencia: 3 entrenamientos en CPU, no interrumpir.")
+
+    try:
+        resultados = ejecutar_combinado_arquitecturas(recalcular=recalcular)
+    except (FileNotFoundError, RuntimeError) as error:
+        raise click.ClickException(str(error)) from error
+
+    for arch in ("VGG16", "ResNet50", "MobileNetV2"):
+        payload = resultados[arch]
+        diagnostico = payload["diagnostico_combinado"]
+        despues = diagnostico["composicion_tras_oversampling"]
+        click.echo(f"\n--- {arch} ---")
+        click.echo(
+            f"Oversampling: {despues['NORMAL']} NORMAL + {despues['PNEUMONIA']} PNEUMONIA "
+            f"= {despues['total']} filas efectivas ({diagnostico['filas_duplicadas']} duplicadas)"
+        )
+        click.echo(f"class_weight: {diagnostico['class_weight']}")
+        click.echo(f"Refuerzo total minoritaria: {diagnostico['refuerzo_total_minoritaria']:.4f}x")
+        click.echo(f"Validation ({payload['validation_n']} imagenes, sin tratar):")
+        for metrica, valor in payload["validation"].items():
+            click.echo(f"  {metrica}: {valor:.4f}")
+        matriz = payload["validation_matriz_confusion"]
+        click.echo(f"  TN {matriz['tn']} / FP {matriz['fp']} / FN {matriz['fn']} / TP {matriz['tp']}")
+
+    click.echo(f"\nArtefactos generados:")
+    click.echo(f"  VGG16: {RUTA_COMBINADO_VGG16}")
+    click.echo(f"  ResNet50: {RUTA_COMBINADO_RESNET50}")
+    click.echo(f"  MobileNetV2: {RUTA_COMBINADO_MOBILENETV2}")
+    click.echo("Siguiente paso: neumonia comparar (comparar y seleccionar arquitectura).")
+
+
+@cli.command()
+def comparar() -> None:
+    """Comparar las 3 arquitecturas y seleccionar la mejor según criterio jerárquico.
+
+    Criterio: Balanced Accuracy > ROC-AUC > F1 > Accuracy (sobre validation).
+    Las tres arquitecturas usan exactamente los mismos datos, preprocessing,
+    augmentation, hiperparámetros y estrategia COMBINADO.
+    """
+    from src.training.flujo_final import RUTA_COMPARACION, RUTA_SELECCION, comparar_arquitecturas
+
+    click.echo("=== Comparación de arquitecturas ===")
+    click.echo("Criterio: Balanced Accuracy > ROC-AUC > F1 > Accuracy (validation)")
+
+    try:
+        comparacion = comparar_arquitecturas()
+    except (FileNotFoundError, RuntimeError) as error:
+        raise click.ClickException(str(error)) from error
+
+    click.echo(f"\nTabla ordenada (mejor primero):")
+    for i, res in enumerate(comparacion["resultados"], 1):
+        click.echo(
+            f"  {i}. {res['model_name']}: BA={res['balanced_accuracy']:.4f} "
+            f"ROC-AUC={res['roc_auc']:.4f} F1={res['f1']:.4f} Acc={res['accuracy']:.4f}"
+        )
+
+    ganador = comparacion["ganador"]
+    click.echo(f"\nArquitectura seleccionada: {ganador['model_name']}")
+    click.echo(f"  Balanced Accuracy: {ganador['balanced_accuracy']:.4f}")
+    click.echo(f"  ROC-AUC: {ganador['roc_auc']:.4f}")
+    click.echo(f"  F1: {ganador['f1']:.4f}")
+    click.echo(f"  Accuracy: {ganador['accuracy']:.4f}")
+
+    click.echo(f"\nArtefactos:")
+    click.echo(f"  Comparación completa: {RUTA_COMPARACION}")
+    click.echo(f"  Selección: {RUTA_SELECCION}")
+    click.echo("Siguiente paso: neumonia umbral (congelar umbral con la arquitectura seleccionada).")
 
 
 @cli.command()
@@ -330,11 +430,11 @@ def evaluar() -> None:
 
     if RUTA_UMBRAL.exists():
         umbral = json.loads(RUTA_UMBRAL.read_text(encoding="utf-8"))
-    click.echo(f"\nUmbral congelado: {umbral['umbral']}")
-    click.echo(f"  Criterio: {umbral['criterio']}")
-    click.echo(f"  Origen: {umbral['conjunto_origen']} ({umbral['validation_n']} imagenes)")
-    click.echo(f"  Artefacto: {RUTA_UMBRAL}")
-    click.echo(f"  Figura: {umbral['figura_seleccion_umbral']}")
+        click.echo(f"\nUmbral congelado: {umbral['umbral']}")
+        click.echo(f"  Criterio: {umbral['criterio']}")
+        click.echo(f"  Origen: {umbral['conjunto_origen']} ({umbral['validation_n']} imagenes)")
+        click.echo(f"  Artefacto: {RUTA_UMBRAL}")
+        click.echo(f"  Figura: {umbral['figura_seleccion_umbral']}")
 
     if RUTA_DECISION.exists():
         decision = json.loads(RUTA_DECISION.read_text(encoding="utf-8"))
@@ -378,20 +478,27 @@ def test_suite(verbose: bool) -> None:
 
 
 @cli.command()
-@click.option("--recalcular-combinado", is_flag=True, help="Rehacer el entrenamiento de COMBINADO.")
+@click.option("--recalcular-combinado", is_flag=True, help="Rehacer los 3 entrenamientos COMBINADO.")
 def run(recalcular_combinado: bool) -> None:
-    """Ejecutar el flujo completo, incluida la evaluación del test final.
+    """Ejecutar el flujo completo nuevo: 3 arquitecturas COMBINADO -> comparar -> umbral -> definitivo -> test.
 
-    El orden es: EDA, preparación, augmentación, sensibilidad, COMBINADO sobre train,
-    umbral congelado a partir de validation, modelo definitivo sobre train + val,
-    evaluación del test original y lectura del informe. Cierra con la suite de pruebas.
+    El orden:
+    1. EDA, preparación, augmentación, sensibilidad (solo consulta, no reentrena)
+    2. combinado_arquitecturas: COMBINADO para VGG16, ResNet50, MobileNetV2
+    3. comparar: compara y selecciona la mejor arquitectura
+    4. umbral: congela umbral con la arquitectura seleccionada
+    5. final: reentrena modelo definitivo sobre train+val
+    6. test: evalúa test original
+    7. evaluar: muestra resultados
+    8. test-suite: ejecuta pruebas
     """
-    click.echo("=== Flujo completo del proyecto (incluye test final) ===")
+    click.echo("=== FLUJO COMPLETO NUEVO: 3 ARQUITECTURAS -> COMPARACIÓN -> MODELO DEFINITIVO -> TEST ===")
     eda()
     prepare()
     augment()
-    sensibilidad(recalcular=False)
-    combinado(recalcular=recalcular_combinado)
+    sensibilidad(recalcular=False)  # Solo consulta, no reentrena las 21 configuraciones
+    combinado_arquitecturas(recalcular=recalcular_combinado)
+    comparar()
     umbral()
     final()
     test()

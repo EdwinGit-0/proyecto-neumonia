@@ -1,0 +1,22 @@
+{
+  "arquitectura_seleccionada": "MobileNetV2",
+  "config": {
+    "learning_rate": 0.001,
+    "dropout": 0.3,
+    "epochs": 3
+  },
+  "criterio": [
+    "balanced_accuracy",
+    "roc_auc",
+    "f1",
+    "accuracy"
+  ],
+  "metricas_seleccionadas": {
+    "balanced_accuracy": 0.9620052961001444,
+    "roc_auc": 0.9941068849301878,
+    "f1": 0.9618729096989966,
+    "accuracy": 0.9453499520613614
+  },
+  "comparacion_completa": "D:\\CIENCIA_DATOS\\Modulo_6\\Code\\proyecto-neumonia\\results\\final\\comparacion_arquitecturas.json",
+  "finalizado": "2026-09-28T22:33:11.088491+00:00"
+}

@@ -7,13 +7,15 @@ a fin.
 
 Etapas:
 
-1. ``ejecutar_combinado``: entrena MobileNetV2 con COMBINADO sobre ``train`` y mide
-   exclusivamente sobre ``validation``, que queda intacta.
-2. ``ajustar_umbral``: elige el umbral que maximiza el balanced accuracy con las
-   probabilidades de ``validation`` y lo congela en ``results/final/umbral_decision.json``.
-3. ``entrenar_modelo_definitivo``: reentrena COMBINADO sobre ``train + val`` con las
-   épocas ya decididas.
-4. ``evaluar_test``: evalúa el modelo definitivo sobre el test original usando el
+1. ``ejecutar_combinado_arquitecturas``: entrena VGG16, ResNet50 y MobileNetV2 con COMBINADO
+   sobre ``train`` y mide exclusivamente sobre ``validation``, que queda intacta.
+2. ``comparar_arquitecturas``: compara las tres arquitecturas usando el criterio jerárquico
+   (Balanced Accuracy > ROC-AUC > F1 > Accuracy) y selecciona la mejor.
+3. ``ajustar_umbral``: elige el umbral que maximiza el balanced accuracy con las
+   probabilidades de ``validation`` de la arquitectura seleccionada y lo congela.
+4. ``entrenar_modelo_definitivo``: reentrena COMBINADO sobre ``train + val`` con las
+   épocas ya decididas para la arquitectura seleccionada.
+5. ``evaluar_test``: evalúa el modelo definitivo sobre el test original usando el
    umbral congelado y guarda el informe final.
 
 El test se trata como un conjunto de measurement normal: se lee una vez, al final del
@@ -22,7 +24,8 @@ ni augmentation: usa sus imágenes y su distribución originales.
 
 Uso:
 
-    python -m src.training.flujo_final combinado
+    python -m src.training.flujo_final combinado_arquitecturas
+    python -m src.training.flujo_final comparar
     python -m src.training.flujo_final umbral
     python -m src.training.flujo_final final
     python -m src.training.flujo_final test
@@ -42,11 +45,13 @@ import tensorflow as tf
 
 from src.data.datasets import construir_pipelines_datos
 from src.data.splitting import cargar_manifiesto_division
-from src.models.architectures import construir_modelo_proyecto
+from src.models.architectures import NOMBRES_MODELOS, construir_modelo_proyecto
+from src.models.comparison import construir_tabla_resultados, resumir_comparacion_modelos
 from src.models.evaluation import (
     calcular_reporte_metricas,
     evaluar_baseline_mayoritaria,
     evaluar_criterio_exito,
+    seleccionar_mejor_modelo,
 )
 from src.training.tratamiento_desbalance import (
     ESTRATEGIA_COMBINADO,
@@ -79,11 +84,20 @@ from src.utils.reproducibility import SEMILLA, reiniciar_semilla
 
 RUTA_MANIFIESTO = RAIZ_PROYECTO / "data" / "interim" / "stratified_split_train80_val20_test_original.csv"
 
-# Arquitectura e hiperparámetros fijados por la etapa de sensibilidad. No se vuelve a
-# buscar: este flujo no hace selección de modelos.
-MODELO_FINAL = "MobileNetV2"
-CONFIG_FINAL_ESPERADA = {"learning_rate": 1e-3, "dropout": 0.3, "epochs": 3}
+# Las tres arquitecturas a comparar
+ARQUITECTURAS = ("VGG16", "ResNet50", "MobileNetV2")
 
+# Hiperparámetros fijados por la etapa de sensibilidad (lr=0.001, dropout=0.3, epochs=3)
+CONFIG_FIJA = {"learning_rate": 1e-3, "dropout": 0.3, "epochs": 3}
+
+# Archivos de resultados por arquitectura
+RUTA_COMBINADO_VGG16 = DIRECTORIO_RESULTADOS_FINAL / "combinado_vgg16_validacion.json"
+RUTA_COMBINADO_RESNET50 = DIRECTORIO_RESULTADOS_FINAL / "combinado_resnet50_validacion.json"
+RUTA_COMBINADO_MOBILENETV2 = DIRECTORIO_RESULTADOS_FINAL / "combinado_mobilenetv2_validacion.json"
+RUTA_COMPARACION = DIRECTORIO_RESULTADOS_FINAL / "comparacion_arquitecturas.json"
+RUTA_SELECCION = DIRECTORIO_RESULTADOS_FINAL / "seleccion_arquitectura.json"
+
+# Archivos existentes del flujo final (para la arquitectura seleccionada)
 RUTA_COMBINADO = DIRECTORIO_RESULTADOS_FINAL / "combinado_validacion.json"
 RUTA_TABLA_COMBINADO = DIRECTORIO_RESULTADOS_FINAL / "combinado_validacion.csv"
 RUTA_PROB_TRUE = DIRECTORIO_RESULTADOS_FINAL / "validacion_y_true.npy"
@@ -98,6 +112,12 @@ RUTA_METRICAS_TEST = DIRECTORIO_RESULTADOS_FINAL / "final_test_metrics.csv"
 
 # Figuras del flujo actual, todas en reports/figures con el nombre de la etapa que
 # las produce.
+FIGURA_VALIDACION_CONFUSION_VGG16 = "validation_combinado_vgg16_confusion_matrix.png"
+FIGURA_VALIDACION_ROC_VGG16 = "validation_combinado_vgg16_roc_curve.png"
+FIGURA_VALIDACION_CONFUSION_RESNET50 = "validation_combinado_resnet50_confusion_matrix.png"
+FIGURA_VALIDACION_ROC_RESNET50 = "validation_combinado_resnet50_roc_curve.png"
+FIGURA_VALIDACION_CONFUSION_MOBILENETV2 = "validation_combinado_mobilenetv2_confusion_matrix.png"
+FIGURA_VALIDACION_ROC_MOBILENETV2 = "validation_combinado_mobilenetv2_roc_curve.png"
 FIGURA_VALIDACION_CONFUSION = "validation_combinado_confusion_matrix.png"
 FIGURA_VALIDACION_ROC = "validation_combinado_roc_curve.png"
 FIGURA_UMBRAL = "threshold_selection_validation.png"
@@ -126,7 +146,12 @@ GRILLA_UMBRALES = tuple(
     sorted({round(0.05 + 0.01 * indice, 2) for indice in range(91)} | {UMBRAL_BASE})
 )
 
+CRITERIO_COMPARACION = ("balanced_accuracy", "roc_auc", "f1", "accuracy")
 
+
+# ---------------------------------------------------------------------------
+# Utilidades
+# ---------------------------------------------------------------------------
 def _marcar(mensaje: str) -> None:
     print(f"[flujo_final] {mensaje}", flush=True)
 
@@ -156,32 +181,44 @@ def rutas_splits_permitidos(splits: Sequence[str]) -> None:
         )
 
 
-def config_desde_sensibilidad() -> dict[str, Any]:
-    """Recuperar la configuración que la sensibilidad ya eligió para MobileNetV2.
+# Mantener compatibilidad con código existente
+MODELO_FINAL = "MobileNetV2"
+CONFIG_FINAL_ESPERADA = {"learning_rate": 1e-3, "dropout": 0.3, "epochs": 3}
 
-    El flujo no busca hiperparámetros: los lee del artefacto de sensibilidad, que es la
-    evidencia que justifica la arquitectura y evita presentar una decisión como si se
-    hubiera tomado aquí.
+
+def obtener_config_fija() -> dict[str, Any]:
+    """Obtener los hiperparámetros fijados por la sensibilidad (lr=0.001, dropout=0.3, epochs=3).
+
+    La sensibilidad ya determinó estos valores para las tres arquitecturas.
+    No se vuelve a entrenar ni buscar: solo se leen y validan.
     """
     configuraciones = cargar_mejor_configuracion_por_arquitectura()
-    if MODELO_FINAL not in configuraciones:
-        raise RuntimeError(
-            f"La sensibilidad no registró {MODELO_FINAL}. Ejecute 'neumonia sensibilidad' antes."
-        )
-    config = dict(configuraciones[MODELO_FINAL]["config"])
-    esperada = CONFIG_FINAL_ESPERADA
-    discrepancia = {
-        clave: (config.get(clave), valor)
-        for clave, valor in esperada.items()
-        if config.get(clave) != valor
-    }
-    if discrepancia:
-        raise RuntimeError(
-            f"La configuración de sensibilidad para {MODELO_FINAL} no coincide con la fijada para "
-            f"este flujo: {discrepancia}. Se esperaba {esperada}. No se continúa para no entrenar "
-            "con hiperparámetros distintos de los documentados."
-        )
-    return config
+    
+    # Verificar que las tres arquitecturas tienen la misma configuración seleccionada
+    for arch in ARQUITECTURAS:
+        if arch not in configuraciones:
+            raise RuntimeError(
+                f"La sensibilidad no registró {arch}. Ejecute 'neumonia sensibilidad' antes."
+            )
+        config = dict(configuraciones[arch]["config"])
+        discrepancia = {
+            clave: (config.get(clave), valor)
+            for clave, valor in CONFIG_FIJA.items()
+            if config.get(clave) != valor
+        }
+        if discrepancia:
+            raise RuntimeError(
+                f"La configuración de sensibilidad para {arch} no coincide con la fijada: "
+                f"{discrepancia}. Se esperaba {CONFIG_FIJA}. No se continúa."
+            )
+    
+    return dict(CONFIG_FIJA)
+
+
+# Alias para compatibilidad hacia atrás
+def config_desde_sensibilidad() -> dict[str, Any]:
+    """Alias de obtener_config_fija para compatibilidad."""
+    return obtener_config_fija()
 
 
 def construir_pipeline_validacion() -> tf.data.Dataset:
@@ -227,8 +264,274 @@ def _composicion_manifiesto(splits: Sequence[str]) -> dict[str, int]:
     }
 
 
+def _rutas_arquitectura(model_name: str) -> dict[str, Path]:
+    """Devolver las rutas de artefactos específicos para una arquitectura."""
+    nombre = model_name.lower()
+    return {
+        "combinado": DIRECTORIO_RESULTADOS_FINAL / f"combinado_{nombre}_validacion.json",
+        "tabla": DIRECTORIO_RESULTADOS_FINAL / f"combinado_{nombre}_validacion.csv",
+        "prob_true": DIRECTORIO_RESULTADOS_FINAL / f"validacion_{nombre}_y_true.npy",
+        "prob_prob": DIRECTORIO_RESULTADOS_FINAL / f"validacion_{nombre}_y_prob.npy",
+        "checkpoint": DIRECTORIO_RESULTADOS_FINAL / "combinado" / nombre / "best_model.keras",
+        "figura_confusion": f"validation_combinado_{nombre}_confusion_matrix.png",
+        "figura_roc": f"validation_combinado_{nombre}_roc_curve.png",
+    }
+
+
 # ---------------------------------------------------------------------------
-# Etapa 1: COMBINADO sobre train, medido en validation
+# Etapa 1: COMBINADO para una arquitectura específica
+# ---------------------------------------------------------------------------
+def ejecutar_combinado_arquitectura(model_name: str, recalcular: bool = False) -> dict[str, Any]:
+    """Entrenar una arquitectura con COMBINADO sobre train y medirla en validation.
+
+    No se compara con ninguna otra estrategia: la elección de COMBINADO es una premisa
+    del proyecto. El resultado se guarda aunque exista, salvo que se pida ``recalcular``.
+    """
+    if model_name not in ARQUITECTURAS:
+        raise ValueError(f"Arquitectura no soportada: {model_name}. Use: {ARQUITECTURAS}")
+
+    rutas = _rutas_arquitectura(model_name)
+    asegurar_directorio(DIRECTORIO_RESULTADOS_FINAL)
+    config = obtener_config_fija()
+
+    if rutas["combinado"].exists() and not recalcular:
+        _marcar(f"{model_name} COMBINADO ya completado, se reutiliza (use --recalcular para rehacerlo)")
+        return cargar_json(rutas["combinado"])
+
+    _marcar(
+        f"entrenando {model_name}/{NOMBRE_ESTRATEGIA} sobre train "
+        f"lr={config['learning_rate']:g} dropout={config['dropout']:g} epochs={config['epochs']}"
+    )
+
+    tf.keras.backend.clear_session()
+    reiniciar_semilla(SEMILLA)
+    train_dataset, class_weight, diagnostico = construir_pipeline_combinado(SPLITS_ENTRENAMIENTO)
+    _marcar(
+        "oversampling: {NORMAL} + {PNEUMONIA} = {total} filas efectivas | class_weight={cw}".format(
+            NORMAL=diagnostico["composicion_tras_oversampling"]["NORMAL"],
+            PNEUMONIA=diagnostico["composicion_tras_oversampling"]["PNEUMONIA"],
+            total=diagnostico["composicion_tras_oversampling"]["total"],
+            cw=diagnostico["class_weight"],
+        )
+    )
+    _marcar(diagnostico["advertencia_doble_correccion"])
+
+    val_dataset = construir_pipeline_validacion()
+
+    model = construir_modelo_proyecto(
+        model_name=model_name,
+        dropout=float(config["dropout"]),
+        learning_rate=float(config["learning_rate"]),
+    )
+    entrenamiento = entrenar_corrida(
+        model=model,
+        train_dataset=train_dataset,
+        val_dataset=val_dataset,
+        epochs=int(config["epochs"]),
+        ruta_checkpoint=rutas["checkpoint"],
+        class_weight=class_weight,
+    )
+    del train_dataset
+    tf.keras.backend.clear_session()
+
+    y_true, y_prob = predecir_probabilidades(model, val_dataset)
+    del val_dataset
+
+    metricas = calcular_reporte_metricas(y_true, y_prob, threshold=UMBRAL_BASE)
+    y_pred = (y_prob >= UMBRAL_BASE).astype(int)
+    matriz = {
+        "tn": int(((y_true == 0) & (y_pred == 0)).sum()),
+        "fp": int(((y_true == 0) & (y_pred == 1)).sum()),
+        "fn": int(((y_true == 1) & (y_pred == 0)).sum()),
+        "tp": int(((y_true == 1) & (y_pred == 1)).sum()),
+    }
+
+    np.save(rutas["prob_true"], y_true)
+    np.save(rutas["prob_prob"], y_prob)
+
+    figura_validacion_confusion = guardar_matriz_confusion(
+        y_true,
+        y_pred,
+        f"Validation - {model_name} COMBINADO (umbral {UMBRAL_BASE:g})",
+        rutas["figura_confusion"],
+    )
+    figura_validacion_roc = guardar_curva_roc(
+        y_true,
+        y_prob,
+        f"Validation - {model_name} COMBINADO",
+        rutas["figura_roc"],
+        etiqueta_adicional=f"{model_name} COMBINADO",
+    )
+
+    payload = {
+        "descripcion": (
+            f"Entrenamiento de {model_name} con la estrategia unica COMBINADO "
+            "(oversampling 50/50 + class weights) sobre train, medido exclusivamente "
+            "sobre validation. Validation no recibe oversampling ni class weights."
+        ),
+        "etapa": "combinado",
+        "estrategia": dict(ESTRATEGIA_COMBINADO),
+        "model_name": model_name,
+        "config": config,
+        "config_origen": "etapa de sensibilidad (sin nueva busqueda de hiperparametros)",
+        "split_manifest": str(RUTA_MANIFIESTO),
+        "seed": SEMILLA,
+        "batch_size": TAMANO_LOTE,
+        "tamano_imagen": list(TAMANO_IMAGEN),
+        "umbral_medicion": UMBRAL_BASE,
+        "splits_entrenamiento": list(SPLITS_ENTRENAMIENTO),
+        "splits_medicion": list(SPLITS_MEDICION),
+        "diagnostico_combinado": diagnostico,
+        "class_weight_aplicado": {str(clase): peso for clase, peso in class_weight.items()},
+        "class_weight_aplicado_solo_a": "funcion de perdida del entrenamiento",
+        "validation_composicion": _composicion_manifiesto(("val",)),
+        "validation": {metrica: float(metricas[metrica]) for metrica in METRICAS_REPORTE},
+        "validation_matriz_confusion": matriz,
+        "validation_n": int(y_true.size),
+        "segundos_entrenamiento": entrenamiento["segundos_entrenamiento"],
+        "epochs_ejecutadas": entrenamiento["epochs_ejecutadas"],
+        "early_stopping": entrenamiento["early_stopping"],
+        "historial": entrenamiento["historial"],
+        "figuras": {
+            "matriz_confusion": str(figura_validacion_confusion),
+            "curva_roc": str(figura_validacion_roc),
+        },
+        "test_utilizado": False,
+        "finalizado": datetime.now(timezone.utc).isoformat(),
+    }
+    guardar_json(payload, rutas["combinado"])
+    _escribir_tabla_validacion_arquitectura(payload, rutas["tabla"])
+    _marcar(
+        f"validation: balanced accuracy {metricas['balanced_accuracy']:.4f} "
+        f"(recall {metricas['recall']:.4f}, specificity {metricas['specificity']:.4f})"
+    )
+    _marcar(f"figuras: {figura_validacion_confusion}, {figura_validacion_roc}")
+    return payload
+
+
+def _escribir_tabla_validacion_arquitectura(payload: dict[str, Any], ruta: Path) -> Path:
+    """Escribir las métricas de validación del modelo COMBINADO en CSV para una arquitectura."""
+    fila = {"split": "validation", "umbral": UMBRAL_BASE, "model_name": payload["model_name"]}
+    fila.update({metrica: payload["validation"][metrica] for metrica in METRICAS_REPORTE})
+    fila.update({f"matriz_{clave}": valor for clave, valor in payload["validation_matriz_confusion"].items()})
+    asegurar_directorio(Path(ruta).parent)
+    pd.DataFrame([fila]).to_csv(ruta, index=False, encoding="utf-8")
+    return Path(ruta)
+
+
+# ---------------------------------------------------------------------------
+# Etapa 1b: COMBINADO para las tres arquitecturas
+# ---------------------------------------------------------------------------
+def ejecutar_combinado_arquitecturas(recalcular: bool = False) -> dict[str, Any]:
+    """Ejecutar COMBINADO para VGG16, ResNet50 y MobileNetV2.
+
+    Cada arquitectura usa los mismos hiperparámetros fijados por la sensibilidad:
+    lr=0.001, dropout=0.3, epochs=3.
+
+    Devuelve un diccionario con los resultados de cada arquitectura.
+    """
+    _marcar("Iniciando COMBINADO para las tres arquitecturas...")
+    resultados = {}
+    for arch in ARQUITECTURAS:
+        _marcar(f"--- {arch} ---")
+        resultados[arch] = ejecutar_combinado_arquitectura(arch, recalcular=recalcular)
+    _marcar("COMBINADO completado para las tres arquitecturas.")
+    return resultados
+
+
+# ---------------------------------------------------------------------------
+# Etapa 2: Comparación de las tres arquitecturas
+# ---------------------------------------------------------------------------
+def comparar_arquitecturas() -> dict[str, Any]:
+    """Comparar las tres arquitecturas usando el criterio jerárquico del proyecto.
+
+    Criterio: Balanced Accuracy > ROC-AUC > F1 > Accuracy (sobre validation).
+
+    Carga los resultados de COMBINADO de cada arquitectura, los compara,
+    y guarda la comparación y la arquitectura seleccionada.
+    """
+    _marcar("Comparando las tres arquitecturas...")
+
+    resultados = []
+    for arch in ARQUITECTURAS:
+        rutas = _rutas_arquitectura(arch)
+        if not rutas["combinado"].exists():
+            raise FileNotFoundError(
+                f"Falta el resultado de COMBINADO para {arch} en {rutas['combinado']}. "
+                f"Ejecute antes 'neumonia combinado_arquitecturas'."
+            )
+        payload = cargar_json(rutas["combinado"])
+        # Crear entrada para la comparación
+        entrada = {
+            "model_name": arch,
+            "config": dict(payload["config"]),
+            "origen": "combinado",
+            **{metrica: float(payload["validation"][metrica]) for metrica in METRICAS_REPORTE},
+        }
+        # Agregar matriz de confusión
+        mc = payload["validation_matriz_confusion"]
+        entrada["confusion_matrix"] = [
+            [int(mc["tn"]), int(mc["fp"])],
+            [int(mc["fn"]), int(mc["tp"])],
+        ]
+        resultados.append(entrada)
+
+    # Ordenar usando el criterio jerárquico
+    ordenados = construir_tabla_resultados(resultados)
+    ganador = seleccionar_mejor_modelo(ordenados)
+
+    comparacion = {
+        "descripcion": (
+            "Comparación de VGG16, ResNet50 y MobileNetV2 con la estrategia COMBINADO "
+            "sobre validation. Mismos datos, preprocessing, augmentation, hiperparámetros "
+            "(lr=0.001, dropout=0.3, epochs=3), misma estrategia de desbalance. "
+            "La única diferencia es la arquitectura."
+        ),
+        "criterio": list(CRITERIO_COMPARACION),
+        "resultados": ordenados,
+        "ganador": ganador,
+        "test_utilizado": False,
+        "finalizado": datetime.now(timezone.utc).isoformat(),
+    }
+    guardar_json(comparacion, RUTA_COMPARACION)
+
+    # Guardar también la selección de arquitectura
+    seleccion = {
+        "arquitectura_seleccionada": ganador["model_name"],
+        "config": dict(ganador["config"]),
+        "criterio": list(CRITERIO_COMPARACION),
+        "metricas_seleccionadas": {
+            "balanced_accuracy": float(ganador["balanced_accuracy"]),
+            "roc_auc": float(ganador["roc_auc"]),
+            "f1": float(ganador["f1"]),
+            "accuracy": float(ganador["accuracy"]),
+        },
+        "comparacion_completa": str(RUTA_COMPARACION),
+        "finalizado": datetime.now(timezone.utc).isoformat(),
+    }
+    guardar_json(seleccion, RUTA_SELECCION)
+
+    _marcar(f"Arquitectura seleccionada: {ganador['model_name']}")
+    _marcar(f"  Balanced Accuracy: {ganador['balanced_accuracy']:.4f}")
+    _marcar(f"  ROC-AUC: {ganador['roc_auc']:.4f}")
+    _marcar(f"  F1: {ganador['f1']:.4f}")
+    _marcar(f"  Accuracy: {ganador['accuracy']:.4f}")
+
+    return comparacion
+
+
+def cargar_seleccion() -> dict[str, Any]:
+    """Cargar la arquitectura seleccionada."""
+    if not RUTA_SELECCION.exists():
+        raise FileNotFoundError(
+            f"No existe {RUTA_SELECCION}. Ejecute antes 'neumonia comparar'."
+        )
+    seleccion = cargar_json(RUTA_SELECCION)
+    return seleccion
+
+
+# ---------------------------------------------------------------------------
+# Etapa 1 (original): COMBINADO para MobileNetV2 (mantenido por compatibilidad)
 # ---------------------------------------------------------------------------
 def ejecutar_combinado(recalcular: bool = False) -> dict[str, Any]:
     """Entrenar MobileNetV2 con COMBINADO sobre train y medirlo en validation.
@@ -753,21 +1056,64 @@ def escribir_tabla_test(reporte: dict[str, Any], ruta: Path = RUTA_METRICAS_TEST
 
 
 def ejecutar_flujo_completo(recalcular_combinado: bool = False) -> dict[str, Any]:
-    """Ejecutar el flujo entero: train/val, umbral, modelo definitivo y test final.
+    """Ejecutar el flujo completo nuevo: 3 arquitecturas COMBINADO -> comparar -> seleccionar -> umbral -> definitivo -> test.
 
-    El orden importa: el umbral se congela a partir de ``validation`` antes de que el
-    modelo definitivo se reentrene y antes de leer el test.
+    El orden importa: 
+    1. COMBINADO para las 3 arquitecturas (mismos hiperparámetros, misma estrategia)
+    2. Comparación y selección de arquitectura
+    3. Umbral sobre validation de la arquitectura seleccionada
+    4. Modelo definitivo sobre train+val
+    5. Test final
     """
-    combinado = ejecutar_combinado(recalcular=recalcular_combinado)
+    _marcar("=== FLUJO COMPLETO: 3 ARQUITECTURAS -> COMPARACIÓN -> MODELO DEFINITIVO -> TEST ===")
+    
+    # 1. COMBINADO para las tres arquitecturas
+    resultados_combinado = ejecutar_combinado_arquitecturas(recalcular=recalcular_combinado)
+    
+    # 2. Comparar y seleccionar arquitectura
+    comparacion = comparar_arquitecturas()
+    seleccion = cargar_seleccion()
+    arquitectura_seleccionada = seleccion["arquitectura_seleccionada"]
+    
+    # 3. Copiar los resultados de la arquitectura seleccionada a los archivos "generales" del flujo
+    _copiar_seleccion_a_flujo(arquitectura_seleccionada)
+    
+    # 4. Ajustar umbral (usa los archivos copiados)
     decision = ajustar_umbral()
+    
+    # 5. Entrenar modelo definitivo
     final = entrenar_modelo_definitivo()
+    
+    # 6. Evaluar test
     test = evaluar_test()
+    
     return {
-        "combinado": combinado,
+        "combinado_arquitecturas": resultados_combinado,
+        "comparacion": comparacion,
+        "seleccion": seleccion,
         "decision": decision,
         "modelo_definitivo": final,
         "test": test,
     }
+
+
+def _copiar_seleccion_a_flujo(arquitectura: str) -> None:
+    """Copiar los resultados de la arquitectura seleccionada a los archivos estándar del flujo."""
+    rutas_arch = _rutas_arquitectura(arquitectura)
+    
+    # Copiar combinado
+    payload = cargar_json(rutas_arch["combinado"])
+    # Actualizar el model_name en el payload para que coincida
+    payload["model_name"] = arquitectura
+    guardar_json(payload, RUTA_COMBINADO)
+    _escribir_tabla_validacion_arquitectura(payload, RUTA_TABLA_COMBINADO)
+    
+    # Copiar probabilidades
+    import shutil
+    shutil.copy2(rutas_arch["prob_true"], RUTA_PROB_TRUE)
+    shutil.copy2(rutas_arch["prob_prob"], RUTA_PROB_PROB)
+    
+    _marcar(f"Resultados de {arquitectura} copiados al flujo estándar")
 
 
 if __name__ == "__main__":
@@ -776,13 +1122,25 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Flujo final del proyecto de neumonía")
     parser.add_argument(
         "etapa",
-        choices=["combinado", "umbral", "final", "test", "todo"],
+        choices=[
+            "combinado_arquitecturas", 
+            "comparar", 
+            "combinado", 
+            "umbral", 
+            "final", 
+            "test", 
+            "todo"
+        ],
         help="Etapa a ejecutar",
     )
     parser.add_argument("--recalcular", action="store_true", help="Rehacer la etapa aunque exista su artefacto")
     argumentos = parser.parse_args()
 
-    if argumentos.etapa == "combinado":
+    if argumentos.etapa == "combinado_arquitecturas":
+        print(json.dumps(ejecutar_combinado_arquitecturas(recalcular=argumentos.recalcular), indent=2, default=str))
+    elif argumentos.etapa == "comparar":
+        print(json.dumps(comparar_arquitecturas(), indent=2, default=str))
+    elif argumentos.etapa == "combinado":
         print(json.dumps(ejecutar_combinado(recalcular=argumentos.recalcular), indent=2, default=str))
     elif argumentos.etapa == "umbral":
         print(json.dumps(ajustar_umbral(), indent=2, default=str))

@@ -8,9 +8,9 @@ Clasificación de imágenes de rayos X de tórax en las clases `NORMAL` y `PNEUM
 
 **Problema:** clasificar radiografías de tórax en las clases `NORMAL` y `PNEUMONIA`.
 
-**Objetivo:** entrenar MobileNetV2 con una estrategia única de tratamiento del desbalance (COMBINADO: oversampling 50/50 sobre `train` más `class_weight`), congelar su umbral de decisión sobre `validation`, reentrenarlo sobre `train + val` y evaluar el test final. Antes se analiza la sensibilidad de sus hiperparámetros. La arquitectura y la estrategia son **premisas fijadas**, no variables a comparar.
+**Objetivo:** comparar VGG16, ResNet50 y MobileNetV2 bajo condiciones experimentales idénticas (mismos datos, mismo preprocessing, misma augmentation, mismos hiperparámetros fijados por la sensibilidad, misma estrategia COMBINADO), seleccionar la mejor arquitectura en `validation`, congelar su umbral, reentrenar el modelo definitivo sobre `train + val` y evaluar el test final.
 
-**Alcance:** análisis exploratorio, preparación de imágenes, sensibilidad de hiperparámetros, entrenamiento con COMBINADO medido en validación, ajuste de umbral, entrenamiento del modelo definitivo y evaluación del test. **Todas** las decisiones se toman con `train` y `validation`; el test se lee al final, con el umbral ya congelado, y no participa en ninguna decisión.
+**Alcance:** análisis exploratorio, preparación de imágenes, sensibilidad de hiperparámetros (21 configuraciones), COMBINADO para las tres arquitecturas, comparación en validation, selección de arquitectura, ajuste de umbral, entrenamiento del modelo definitivo y evaluación del test. **Todas** las decisiones se toman con `train` y `validation`; el test se lee una sola vez, al final, con el umbral ya congelado, y no participa en ninguna decisión.
 
 > **Nota:** este proyecto tiene finalidad académica y experimental. No constituye un sistema clínico ni una herramienta de diagnóstico médico.
 
@@ -84,7 +84,7 @@ El tratamiento de desbalance del proyecto es **COMBINADO** y se aplica **únicam
 
 ## 4. Modelos
 
-Se evaluaron tres arquitecturas mediante transferencia de aprendizaje con pesos de ImageNet:
+Se comparan tres arquitecturas mediante transferencia de aprendizaje con pesos de ImageNet bajo **condiciones experimentales idénticas**:
 
 * **VGG16**
 * **ResNet50**
@@ -102,8 +102,7 @@ Dropout(0.3)
 Dense(1, Sigmoid)
 ```
 
-El flujo final usa **MobileNetV2**: la sensibilidad de hiperparámetros la eligió y su configuración
-queda cerrada en `models/sensitivity_results.json`.
+La arquitectura final se **selecciona tras COMBINADO** comparando las tres en validation con el criterio jerárquico (Balanced Accuracy > ROC-AUC > F1 > Accuracy). En la ejecución validada: **MobileNetV2**.
 
 ### Configuración de entrenamiento
 
@@ -121,12 +120,12 @@ queda cerrada en `models/sensitivity_results.json`.
 | ReduceLROnPlateau    | factor 0.5, paciencia 2 |
 | Learning rate mínimo | `1e-6`                  |
 
-El modelo definitivo se reentrena sobre `train + val` con el número de épocas ya decidido, así que en
+El modelo definitivo se reentrena sobre `train + val` con el número de épocas ya decidido (3), así que en
 esa etapa el checkpoint guarda los pesos del último epoch.
 
 ---
 
-## 5. Selección del modelo
+## 5. Selección del modelo y flujo experimental
 
 Todas las decisiones se realizan **exclusivamente sobre validation (1.043 imágenes)**.
 
@@ -137,7 +136,7 @@ El conjunto `test` de 624 imágenes permanece reservado y no participa en:
 * ajuste de hiperparámetros;
 * ajuste del umbral de decisión.
 
-Se lee **una sola vez**, al final del flujo, en la etapa 5. El artefacto de sensibilidad registra
+Se lee **una sola vez**, al final del flujo, en la etapa final. El artefacto de sensibilidad registra
 `test_utilizado: false`.
 
 El aislamiento es **estructural**, no una convención: `construir_pipelines_datos()` excluye el split
@@ -153,17 +152,18 @@ La regla de selección es jerárquica y se aplicó en cada etapa:
 3. F1
 4. Accuracy
 
-El proceso completo se dividió en etapas cerradas. Cada etapa se ejecuta **una sola vez**
+El proceso completo se divide en etapas cerradas. Cada etapa se ejecuta **una sola vez**
 y su resultado queda registrado en un artefacto JSON que las etapas posteriores leen, sin
 volver a entrenar lo ya resuelto.
 
 | # | Etapa                                        | Entrada                                    | Salida                                        | ¿Se repite?      |
 | - | -------------------------------------------- | ------------------------------------------ | --------------------------------------------- | ---------------- |
 | 1 | Sensibilidad de hiperparámetros               | 7 configuraciones × 3 arquitecturas = 21 entrenamientos | `models/sensitivity_results.json`             | No               |
-| 2 | COMBINADO sobre `train`                       | mejor configuración de MobileNetV2 de la etapa 1 | `results/final/combinado_validacion.json`   | No               |
-| 3 | Umbral de decisión                           | probabilidades de validation de la etapa 2 | `results/final/umbral_decision.json`        | No               |
-| 4 | Modelo definitivo                            | decisión congelada, `train + val`         | `results/final/final_model_training.json`     | No               |
-| 5 | Test final                                   | modelo definitivo + umbral congelado      | `results/final/final_test_report.json`        | No               |
+| 2 | COMBINADO para VGG16, ResNet50, MobileNetV2   | hiperparámetros fijados (lr=1e-3, dropout=0.3, epochs=3) | 3 archivos `combinado_*_validacion.json`   | No               |
+| 3 | Comparación de arquitecturas                 | resultados COMBINADO de las 3 arquitecturas | `comparacion_arquitecturas.json`, `seleccion_arquitectura.json` | No               |
+| 4 | Umbral de decisión                           | probabilidades de validation de la arquitectura seleccionada | `results/final/umbral_decision.json`        | No               |
+| 5 | Modelo definitivo                            | decisión congelada, `train + val`         | `results/final/final_model_training.json`     | No               |
+| 6 | Test final                                   | modelo definitivo + umbral congelado      | `results/final/final_test_report.json`        | No               |
 
 La etapa 1 exploró learning rate, dropout y número de épocas sobre las tres arquitecturas
 (7 configuraciones, 21 entrenamientos) y cerró el espacio de búsqueda. Sus ganadores por
@@ -175,35 +175,43 @@ arquitectura se leen de `models/sensitivity_results.json` **sin reentrenar nada*
 | ResNet50     |            `1e-3` |    `0.3` |    `3` |                        0.736625 |
 | VGG16        |            `1e-3` |    `0.3` |    `3` |                        0.939913 |
 
-**MobileNetV2 es la arquitectura del modelo final.** COMBINADO (oversampling 50/50 sobre `train`
-más `class_weight` en la pérdida) es la única estrategia de desbalance del proyecto: es una premisa
+**Las tres arquitecturas comparten la misma configuración (lr=1e-3, dropout=0.3, epochs=3)**.
+Esta configuración se usa en la etapa 2 para entrenar COMBINADO en las tres arquitecturas.
+
+COMBINADO (oversampling 50/50 sobre `train` más `class_weight` en la pérdida) es la única estrategia de desbalance del proyecto: es una premisa
 metodológica cerrada, no el resultado de comparar variantes. Cualquier informe debe declararlo así.
 
-La etapa 2 entrena **una sola** corrida, MobileNetV2 con COMBINADO:
+La etapa 2 entrena **tres** corridas COMBINADO (una por arquitectura):
 
-| Paso | Qué hace |
-| ---- | -------- |
-| Oversampling | `NORMAL` se equipara con `PNEUMONIA` solo en `train` (1.073 → 3.100), hasta 6.200 filas efectivas |
-| Class weights | `{0: 1.9445, 1: 0.6731}`, calculados sobre la distribución original de `train` |
-| Ámbito | Solo `train`: oversampling al pipeline, pesos a la función de pérdida de `fit` |
-| `validation` | Intacta: 268 NORMAL / 775 PNEUMONIA, ni oversampling ni pesos |
+| Arquitectura | Balanced Accuracy | ROC-AUC | F1 | Accuracy | Recall | Specificity |
+| ------------ | ----------------: | ------: | -: | -------: | -----: | ----------: |
+| MobileNetV2  |            0.9620 |  0.9941 | 0.9619 |   0.9453 | 0.9277 |      0.9963 |
+| VGG16        |            0.8904 |  0.9878 | 0.8786 |   0.8389 | 0.7845 |      0.9963 |
+| ResNet50     |            0.7595 |  0.9002 | 0.6886 |   0.6462 | 0.5265 |      0.9925 |
+
+La etapa 3 compara las tres usando el criterio jerárquico y **selecciona MobileNetV2**.
 
 > **Doble corrección.** Como los pesos se calculan sobre la distribución original y no sobre el
 > conjunto ya equilibrado, no se anulan con el oversampling: el refuerzo efectivo de `NORMAL` frente a
 > `PNEUMONIA` es de **2.89x**. COMBINADO no solo corrige el desbalance, lo invierte parcialmente en el
 > entrenamiento. Está registrado en `diagnostico_combinado.advertencia_doble_correccion`.
 
-El resto de hiperparámetros (learning rate `1e-3`, dropout `0.3`, batch size `16`, 3 épocas,
-semilla `42`) es el cerrado en la etapa 1. La etapa 3 recorre 91 umbrales sobre validation y
-**congela** el mejor; la etapa 4 reentrena sobre `train + val` sin volver a mirar validation.
+Los hiperparámetros (learning rate `1e-3`, dropout `0.3`, batch size `16`, 3 épocas, semilla `42`)
+son los cerrados en la etapa 1. La etapa 4 recorre 91 umbrales sobre validation y **congela** el mejor
+(0.38); la etapa 5 reentrena sobre `train + val` sin volver a mirar validation.
 
 Los artefactos del flujo vigente son:
 
 ```text
 models/sensitivity_results.json                 # 21 corridas de sensibilidad (cerradas, no se repiten)
-results/final/combinado_validacion.json         # COMBINADO medido en validation
+results/final/combinado_vgg16_validacion.json   # COMBINADO VGG16 en validation
+results/final/combinado_resnet50_validacion.json # COMBINADO ResNet50 en validation
+results/final/combinado_mobilenetv2_validacion.json # COMBINADO MobileNetV2 en validation
+results/final/comparacion_arquitecturas.json    # comparación y ganador
+results/final/seleccion_arquitectura.json       # arquitectura seleccionada
+results/final/combinado_validacion.json         # COMBINADO de la arquitectura seleccionada (copiado)
 results/final/combinado_validacion.csv
-results/final/validacion_y_{true,prob}.npy
+results/final/validacion_y_{true,prob}.npy      # probabilidades de la arquitectura seleccionada
 results/final/umbral_decision.json              # barrido de 91 umbrales sobre validation
 results/final/decision_modelo.json
 results/final/final_model/best_model.keras
@@ -219,23 +227,14 @@ Las figuras se generan en `reports/figures` y se nombran según la etapa que las
 | `dataset_distribution.png`, `file_size_distribution.png`, `image_dimensions.png`, `sample_normal.png`, `sample_pneumonia.png` | EDA |
 | `data_augmentation_examples.png` | `augment` |
 | `sensitivity_validation.png` | `sensibilidad` |
-| `validation_combinado_confusion_matrix.png`, `validation_combinado_roc_curve.png` | `combinado` |
+| `validation_combinado_vgg16_confusion_matrix.png`, `validation_combinado_vgg16_roc_curve.png` | `combinado-arquitecturas` (VGG16) |
+| `validation_combinado_resnet50_confusion_matrix.png`, `validation_combinado_resnet50_roc_curve.png` | `combinado-arquitecturas` (ResNet50) |
+| `validation_combinado_mobilenetv2_confusion_matrix.png`, `validation_combinado_mobilenetv2_roc_curve.png` | `combinado-arquitecturas` (MobileNetV2) |
 | `threshold_selection_validation.png` | `umbral` |
 | `test_final_confusion_matrix.png`, `test_final_roc_curve.png`, `test_final_metrics.png` | `test` |
 
 El informe de la etapa `sensibilidad` queda en
 `experiments/sensibilidad_hiperparametros/INFORME_SENSIBILIDAD.md`; no contiene métricas de test.
-
-### Configuración de entrenamiento
-
-| Parámetro         | Valor                                    |
-| ----------------- | ---------------------------------------- |
-| Batch size        | `16`                                     |
-| Semilla           | `42`                                     |
-| Augmentación      | `RandomRotation(0.05, seed=42)` y `RandomZoom(0.05, seed=42)`, solo en `train` |
-| Early Stopping    | paciencia 3, `restore_best_weights=True` |
-| ModelCheckpoint   | `val_loss`, `mode="min"`, guarda solo el mejor |
-| ReduceLROnPlateau | factor 0.5, paciencia 2, mínimo `1e-6`  |
 
 ---
 
@@ -260,83 +259,100 @@ El modelo seleccionado debe:
 2. Obtener una sensibilidad superior a `0.5`.
 3. Obtener una especificidad superior a `0.5`.
 
-El modelo COMBINADO **cumple las tres** en el test final, con el umbral congelado: Balanced Accuracy
-`0.9073`, recall `0.9256` y specificity `0.8889` (ver sección 7).
+El modelo definitivo **cumple las tres** en el test final, con el umbral congelado: Balanced Accuracy
+`0.8996`, recall `0.8974` y specificity `0.9017`.
 
 ---
 
 ## 7. Resultados
 
-### COMBINADO sobre validation (1.043 imágenes)
+### COMBINADO sobre validation (1.043 imágenes) - por arquitectura
 
-Corrida actual: MobileNetV2, `lr=1e-3`, dropout `0.3`, 3 épocas, umbral de medición 0.5.
+Tres arquitecturas entrenadas con COMBINADO (lr=1e-3, dropout=0.3, epochs=3), umbral de medición 0.5:
 
-| Balanced Acc | ROC-AUC |   F1 | Accuracy | Precision | Recall | Specificity |
-| -----------: | ------: | ---: | -------: | --------: | -----: | ----------: |
-| **0.9549**   | 0.9939 | 0.9542 | 0.9348 |    0.9986 | 0.9135 |      0.9963 |
+| Arquitectura | Balanced Acc | ROC-AUC |   F1 | Accuracy | Precision | Recall | Specificity |
+| ------------ | -----------: | ------: | ---: | -------: | --------: | -----: | ----------: |
+| MobileNetV2  |     **0.9620** | 0.9941 | 0.9619 | 0.9453 |    0.9986 | 0.9277 |      0.9963 |
+| VGG16        |         0.8904 | 0.9878 | 0.8786 | 0.8389 |    0.9984 | 0.7845 |      0.9963 |
+| ResNet50     |         0.7595 | 0.9002 | 0.6886 | 0.6462 |    0.9951 | 0.5265 |      0.9925 |
 
-Matriz de confusión: `[[267, 1], [67, 708]]` (TN 267, FP 1, FN 67, TP 708).
+Matrices de confusión (umbral 0.5):
+- MobileNetV2: TN 267, FP 1, FN 56, TP 719
+- VGG16: TN 267, FP 1, FN 167, TP 608
+- ResNet50: TN 266, FP 2, FN 367, TP 408
+
+### Comparación y selección de arquitectura
+
+Criterio jerárquico: **Balanced Accuracy > ROC-AUC > F1 > Accuracy** (sobre validation)
+
+| Pos | Arquitectura | Balanced Acc | ROC-AUC | F1 | Accuracy |
+| --- | ------------ | -----------: | ------: | -: | -------: |
+| 1 | **MobileNetV2** | 0.9620 | 0.9941 | 0.9619 | 0.9453 |
+| 2 | VGG16 | 0.8904 | 0.9878 | 0.8786 | 0.8389 |
+| 3 | ResNet50 | 0.7595 | 0.9002 | 0.6886 | 0.6462 |
+
+**Arquitectura seleccionada: MobileNetV2**
 
 ### Umbral de decisión (validation)
 
-La etapa 3 recorrió 91 umbrales (0.05 a 0.95 en pasos de 0.01, más 0.50 explícito) sobre el modelo
-COMBINADO, todavía sin reentrenar, y **congeló** el mejor por Balanced Accuracy:
+La etapa recorre 91 umbrales (0.05 a 0.95 en pasos de 0.01, más 0.50 explícito) sobre las probabilidades
+de validation del modelo MobileNetV2 COMBINADO y **congela** el mejor por Balanced Accuracy:
 
 | Umbral | Balanced Acc |   F1 | Accuracy | Precision | Specificity | Recall |
 | -----: | -----------: | ---: | -------: | -------: | ----------: | -----: |
 |  0.50 |       0.9549 | 0.9542 |  0.9348 |  0.9986 |      0.9963 | 0.9135 |
-| **0.38** |   **0.9621** | **0.9647** | **0.9492** | **0.9959** | **0.9888** | **0.9355** |
+| **0.38** |   **0.9621** | 0.9647 | 0.9492 | 0.9959 |      0.9888 | 0.9355 |
 | Δ      |     +0.0072 | +0.0105 | +0.0144 | -0.0027 |     -0.0075 | +0.0220 |
 
-Con el umbral congelado, la matriz de confusión de validation es `[[265, 3], [50, 725]]`
-(TN 265, FP 3, FN 50, TP 725).
+**Umbral congelado: 0.38** (Δ BA +0.0072 frente a 0.5). Con el umbral congelado, la matriz de
+confusión de validation es TN 265, FP 3, FN 50, TP 725.
 
 Artefacto: `results/final/umbral_decision.json`. Figura: `threshold_selection_validation.png`.
 
-> **El Δ también hay que leerlo con cuidado.** El umbral se eligió maximizando Balanced Accuracy sobre
-> validation, y ese mismo conjunto es el que se reporta: el `0.9621` está **sesgado al alza**. El 0.38
-> queda congelado por el criterio acordado, y el artefacto lleva esta advertencia en
-> `advertencia_optimismo`. Un umbral más bajo compra recall a costa de specificity, que es exactamente
-> lo que el balanced accuracy premia.
+> **Advertencia de optimismo.** El umbral se eligió maximizando Balanced Accuracy sobre validation, y
+> ese mismo conjunto es el que se reporta: el 0.9621 está **sesgado al alza**. El 0.38 queda congelado
+> por el criterio acordado, y el artefacto lleva esta advertencia en `advertencia_optimismo`.
 
 ### Modelo definitivo
 
-La etapa 4 reentrenó MobileNetV2 con COMBINADO sobre `train + val` (5.216 imágenes:
-1.341 NORMAL / 3.875 PNEUMONIA) durante 3 épocas, con el umbral `0.38` ya congelado y sin volver a
-consultar validation. Como no queda validación que monitorear, los pesos finales se guardan de forma
-explícita. Artefactos: `results/final/final_model_training.json` y
-`results/final/final_model/best_model.keras`.
+La etapa reentrena MobileNetV2 COMBINADO sobre `train + val` (5.216 imágenes: 1.341 NORMAL / 3.875
+PNEUMONIA) durante 3 épocas, con el umbral `0.38` ya congelado y sin volver a consultar validation.
+Como no queda validación que monitorear, los pesos finales se guardan de forma explícita. Artefactos:
+`results/final/final_model_training.json` y `results/final/final_model/best_model.keras`.
 
-## 7-bis. Test final (624 imágenes)
+### Test final (624 imágenes: 234 NORMAL / 390 PNEUMONIA)
 
-La etapa 5 evalúa el modelo definitivo COMBINADO sobre el test original, con el umbral congelado en
-`0.38` y **sin** ningún tratamiento de desbalance: las imágenes y la distribución son las originales
-(234 `NORMAL`, 390 `PNEUMONIA`).
+Evaluación del modelo definitivo MobileNetV2 COMBINADO sobre el test original, con el umbral congelado
+en `0.38` y **sin** ningún tratamiento de desbalance: las imágenes y la distribución son las originales.
 
-| Balanced Acc | ROC-AUC |   F1 | Accuracy | Precision | Recall | Specificity |
-| -----------: | ------: | ---: | -------: | --------: | -----: | ----------: |
-| **0.9073**   | 0.9728 | 0.9292 | 0.9119 |    0.9328 | 0.9256 |      0.8889 |
+| Métrica | Valor (umbral 0.38) | Referencia (umbral 0.5) |
+| ------- | ------------------: | ----------------------: |
+| **Balanced Accuracy** | **0.8996** | 0.8936 |
+| Accuracy | 0.8990 | 0.8862 |
+| Precision | 0.9383 | 0.9493 |
+| Recall | 0.8974 | 0.8641 |
+| Specificity | 0.9017 | 0.9231 |
+| F1 | 0.9174 | 0.9047 |
+| ROC-AUC | 0.9694 | 0.9694 |
 
-Matriz de confusión: `[[208, 26], [29, 361]]` (TN 208, FP 26, FN 29, TP 361).
+Matriz de confusión: **TN 211 / FP 23 / FN 40 / TP 350** (umbral 0.38).
 
-Con el umbral por defecto de 0.5 sobre las mismas probabilidades: Balanced Accuracy `0.9026`,
-accuracy `0.9006`, precision `0.9432`, recall `0.8949`, specificity `0.9103`, F1 `0.9184`.
+El criterio de éxito se cumple: supera el baseline de Balanced Accuracy (0.5000), recall 0.8974 > 0.5
+y specificity 0.9017 > 0.5.
 
-El criterio de éxito se cumple en las tres condiciones: supera el baseline de Balanced Accuracy
-(`0.5000`), recall `0.9256 > 0.5` y specificity `0.8889 > 0.5`.
-
-Artefactos: `results/final/final_test_report.json` y `final_test_metrics.csv`.
+Artefactos: `results/final/final_test_report.json`, `final_test_metrics.csv`.
 Figuras: `test_final_confusion_matrix.png`, `test_final_roc_curve.png`, `test_final_metrics.png`.
 
-**Orden respecto al umbral.** El umbral se congeló en la etapa 3, antes de reentrenar el modelo
+**Orden respecto al umbral.** El umbral se congeló en la etapa 4, antes de reentrenar el modelo
 definitivo y antes de leer el test. Cuando la evaluación ocurre, la arquitectura, la estrategia, los
 hiperparámetros y el punto de corte ya están cerrados: la evaluación no realimenta ninguna decisión.
 
-> **Gap validation → test:** el Balanced Accuracy cae de `0.9621` a `0.9073` (~0.055), mientras que el
-> ROC-AUC apenas se mueve (`0.9939` → `0.9728`). Eso apunta a una degradación del punto de corte y no
-> del ordenamiento de las probabilidades, y la causa más probable es la transferencia del umbral:
-> se eligió con las probabilidades del modelo entrenado solo con `train` y se aplicó al reentrenado
-> con `train + val`, cuya escala de probabilidades es otra. Es una hipótesis, no una medición.
+> **Gap validation → test:** el Balanced Accuracy cae de `0.9621` (validation, sesgada por la selección
+> del umbral) a `0.8996` (test), una caída de ~0.062. El ROC-AUC se mantiene alto (0.9694 frente a
+> 0.9941), lo que sugiere que la degradación está en el ajuste del punto de corte y no en el
+> ordenamiento de las probabilidades. La transferencia del umbral —elegido con las probabilidades del
+> modelo entrenado solo con `train` y aplicado al reentrenado con `train + val`— es la causa más
+> probable, y no está verificada empíricamente.
 
 ### Reproducibilidad de la etapa
 
@@ -516,18 +532,29 @@ reentrenamiento:
 neumonia sensibilidad --recalcular
 ```
 
-> Las 21 corridas ya están completas y **no deben repetirse**: la etapa 2 parte de
+> Las 21 corridas ya están completas y **no deben repetirse**: las etapas posteriores parten de
 > `models/sensitivity_results.json`.
 
-### COMBINADO sobre train
+### COMBINADO para 3 arquitecturas (nuevo flujo)
 
 ```powershell
-neumonia combinado
+neumonia combinado-arquitecturas
 ```
 
-Entrena MobileNetV2 con COMBINADO (oversampling 50/50 sobre `train` más `class_weight`) y mide
-exclusivamente sobre `validation`, que queda intacta. Es la única etapa de entrenamiento sobre `train`
-del flujo: la estrategia es una premisa del proyecto, no el resultado de comparar variantes.
+Entrena VGG16, ResNet50 y MobileNetV2 con COMBINADO (oversampling 50/50 sobre `train` más
+`class_weight`) usando los hiperparámetros fijados por la sensibilidad (lr=1e-3, dropout=0.3,
+epochs=3). Mide cada una exclusivamente sobre `validation`, que queda intacta. Genera 3 archivos de
+resultados y sus figuras.
+
+### Comparar arquitecturas y seleccionar (nuevo flujo)
+
+```powershell
+neumonia comparar
+```
+
+Compara las 3 arquitecturas usando el criterio jerárquico (Balanced Accuracy > ROC-AUC > F1 >
+Accuracy) sobre validation y selecciona la mejor. En la ejecución validada: **MobileNetV2**.
+Copia los resultados de la arquitectura seleccionada al flujo estándar.
 
 ### Umbral de decisión
 
@@ -535,10 +562,10 @@ del flujo: la estrategia es una premisa del proyecto, no el resultado de compara
 neumonia umbral
 ```
 
-Recorre 91 umbrales sobre `validation` con el modelo COMBINADO, **sin** mirar el test, y congela el
-mejor por Balanced Accuracy en `results/final/umbral_decision.json`. Para la ejecución validada
-quedó en `0.38`, con un Δ de `+0.0072` frente al 0.5 por defecto. Genera la figura
-`threshold_selection_validation.png`.
+Recorre 91 umbrales sobre `validation` con el modelo COMBINADO de la arquitectura seleccionada, **sin**
+mirar el test, y congela el mejor por Balanced Accuracy en `results/final/umbral_decision.json`. Para
+la ejecución validada quedó en `0.38`, con un Δ de `+0.0072` frente al 0.5 por defecto. Genera la
+figura `threshold_selection_validation.png`.
 
 ### Modelo definitivo
 
@@ -547,7 +574,7 @@ neumonia final
 ```
 
 Reentrena COMBINADO sobre `train + val` con el umbral congelado y guarda
-`results/final/final_model/best_model.keras`. No vuelve a mirar `validation`. Tardó 487 s en CPU.
+`results/final/final_model/best_model.keras`. No vuelve a mirar `validation`.
 
 ### Test final
 
@@ -559,7 +586,6 @@ Evalúa el modelo definitivo sobre el test original con el umbral congelado. Se 
 otra etapa: sin banderas de confirmación y sin consultar historial. Aplica el umbral, escribe
 `results/final/final_test_report.json` y `final_test_metrics.csv`, y genera la matriz de confusión, la
 curva ROC y el gráfico de métricas. No aplica oversampling, `class_weight` ni augmentation al test.
-Ver la sección 7-bis.
 
 ### Consultar resultados
 
@@ -575,15 +601,19 @@ Consulta los artefactos guardados sin volver a entrenar.
 neumonia test-suite
 ```
 
-### Ejecutar el flujo completo
+### Ejecutar el flujo completo (nuevo flujo)
 
 ```powershell
 neumonia run
 ```
 
-Encadena el EDA, la preparación de datos, la augmentación, la sensibilidad (sin repetirla si ya
-existe), COMBINADO, el umbral, el modelo definitivo, la evaluación del test y la suite de pruebas.
+Encadena: EDA → prepare → augment → sensibilidad (sin repetir si ya existe) → **combinado-arquitecturas** → **comparar** → umbral → final → test → evaluar → test-suite.
 El test es la última etapa: el umbral ya está congelado cuando se lee.
+
+### Flujo original (compatibilidad)
+
+Los comandos `neumonia combinado`, `neumonia umbral`, `neumonia final`, `neumonia test` siguen
+disponibles para compatibilidad con el flujo original de una sola arquitectura (MobileNetV2).
 
 ---
 
@@ -697,8 +727,8 @@ La documentación técnica adicional está en `references/documentacion_proyecto
 * **El Balanced Accuracy de validation está sesgado al alza.** El umbral se maximiza sobre el mismo
   conjunto que se reporta, de modo que el `0.9621` es un techo de selección, no una estimación de
   desempeño.
-* **El gap validation → test es de ~0.055 en Balanced Accuracy** (`0.9621` frente a `0.9073`). El
-  ROC-AUC apenas cae (`0.9939` → `0.9728`), lo que sugiere que se degrada el punto de corte y no el
+* **El gap validation → test es de ~0.062 en Balanced Accuracy** (`0.9621` frente a `0.8996`). El
+  ROC-AUC apenas cae (`0.9941` → `0.9694`), lo que sugiere que se degrada el punto de corte y no el
   ordenamiento de las probabilidades.
 * El tamaño de validation (1 043 imágenes) y de test (624 imágenes, 234 NORMAL) introduce un
   intervalo de confianza amplio en todas las métricas: diferencias de menos de ~0.01 no son
@@ -726,12 +756,15 @@ La documentación técnica adicional está en `references/documentacion_proyecto
 | Augmentación          | Completada              |
 | Modelado              | Completado              |
 | Sensibilidad de hiperparámetros | Completada (7 configs × 3 arquitecturas = 21 entrenamientos, todos con `lr=1e-3`) |
-| COMBINADO sobre `train` | Completada (BA validation 0.9549, ROC-AUC 0.9939) |
+| COMBINADO VGG16       | Completada (BA validation 0.8904, ROC-AUC 0.9878) |
+| COMBINADO ResNet50    | Completada (BA validation 0.7595, ROC-AUC 0.9002) |
+| COMBINADO MobileNetV2 | Completada (BA validation 0.9620, ROC-AUC 0.9941) |
+| Comparación arquitecturas | Completada (seleccionado MobileNetV2) |
 | Umbral de decisión    | Completada (congelado en `0.38`, BA validation 0.9621) |
-| Modelo definitivo     | Completada (`train + val`, 3 épocas, 487 s) |
-| Test final            | Completada (BA 0.9073, ROC-AUC 0.9728, matriz `[[208, 26], [29, 361]]`) |
+| Modelo definitivo     | Completada (`train + val`, 3 épocas) |
+| Test final            | Completada (BA 0.8996, ROC-AUC 0.9694, matriz `[[211, 23], [40, 350]]`) |
 | Testing               | Automatizado (95 pruebas) |
 | Documentación         | Actualizada             |
 | Despliegue productivo | Fuera del alcance       |
 
-El flujo se ejecuta de principio a fin: `combinado` → `umbral` → `final` → `test`.
+El flujo nuevo se ejecuta de principio a fin: `combinado-arquitecturas` → `comparar` → `umbral` → `final` → `test`.
